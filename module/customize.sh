@@ -109,7 +109,7 @@ else
     SRC="$MODPATH/config/template.json"
     CFGNAME=template
     [ -f "$SRC" ] || abort "! 模块内缺少 template.json，安装包不完整"
-    note "未匹配到平台配置，改用通用模板 template.json（频率档位可能与本机不完全一致）"
+    note "未匹配到平台配置，改用通用模板 template.json（频率档位可能与本机不完全一致；该模板不含功耗模型，uperf 不会接管 CPU 频率）"
 fi
 
 if [ ! -f "$MODPATH/bin/uperf" ]; then
@@ -151,6 +151,16 @@ mkdir -p /data/adb/nanhe_ovo || abort "! 无法创建 /data/adb/nanhe_ovo"
 chmod 0700 /data/adb/nanhe_ovo 2>/dev/null
 printf '%s\n' "$CFGNAME" >/data/adb/nanhe_ovo/device_config.txt
 chmod 0600 /data/adb/nanhe_ovo/device_config.txt 2>/dev/null
+# 回退模板时把原因写进运行日志：模板没有 CPU 功耗模型，uperf 不接管频率，
+# 系统 DVFS 会按自己的策略频繁升降频（真机上表现为「模块在降频」）。
+if [ "$CFGNAME" = template ]; then
+    LOGF=/data/adb/nanhe_ovo/log.txt
+    if [ ! -L "$LOGF" ]; then
+        printf '%s\t%s\t%s\t%s\n' "$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null)" warn config \
+            "未匹配到平台配置（platform=${PLATFORM:-?} board=${BOARD:-?}），已回退 template.json；该模板不含 CPU 功耗模型，uperf 不会接管频率，系统 DVFS 可能频繁升降频" \
+            >>"$LOGF" 2>/dev/null
+    fi
+fi
 
 # --- SELinux 上下文（权限已由 fix_perms 统一处理）---
 if type chcon >/dev/null 2>&1; then

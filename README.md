@@ -6,9 +6,9 @@
 
 想直接拿文案去发布，看 [docs/模块介绍.md](docs/模块介绍.md)：一句话版 / 群公告短版 / 发布帖长版，含完整出处表与已知边界。
 
-- 版本：`v1.3.1`（versionCode `20261121`）
+- 版本：`v1.3.2`（versionCode `20261122`）
 - 模块 id：`nanhe_ovo`
-- 可刷入包：[`nanhe_ovo-v1.3.1-20261121.zip`](https://github.com/nanhe-ovo/nanhe_ovo-module/releases/download/v1.3.1/nanhe_ovo-v1.3.1-20261121.zip)（1,838 KB / 103 个文件）
+- 可刷入包：[`nanhe_ovo-v1.3.2-20261122.zip`](https://github.com/nanhe-ovo/nanhe_ovo-module/releases/download/v1.3.2/nanhe_ovo-v1.3.2-20261122.zip)（1,841 KB / 104 个文件）
 - 要求：**arm64** 设备（内置 uperf 与 busybox 只有 aarch64 版本）
 
 ![首页](docs/screenshots/ui-overview.png)
@@ -20,6 +20,12 @@
 - **全局性能模式**：面板里一排模式卡（常见为省电 / 均衡 / 性能 / 极速，具体取决于 `uperf.json` 的 presets），一点即切换，写入 `/sdcard/Android/yc/uperf/cur_powermode.txt`。
 - **分应用规则**：给单个应用绑定调度策略，写进 `perapp_powermode.txt`；应用页可搜索、改绑、删除。
 - 包名枚举三路兜底（`pm list packages` / `packages.list` / `dumpsys`），全部失败才留空并记日志。
+
+### 平台配置
+
+- 安装器按 `ro.board.platform` 选平台表，模块内带 68 份（`config/mt*.json` 等），覆盖骁龙 / 天玑 / Exynos / 麒麟 / Tensor。
+- v1.3.2 补上 **Dimensity 9400（mt6991 → `mtd9400.json`）**：4×A7xx / 3×X4 / 1×X925 三段功耗模型，presets 带 DDR 保底（3.2 / 2.667 / 5.5 GB/s），不再回退到没有功耗模型的 `template.json`。
+- 回退模板时安装器会写一条 `warn config` 日志（面板「关于 → 运行日志」可见），说明「uperf 不会接管 CPU 频率」，避免把系统 DVFS 的锯齿误判成模块降频。降频排查过程见 [docs/降频分析与v1.3.2优化.md](docs/降频分析与v1.3.2优化.md)。
 
 ### 频率
 
@@ -77,7 +83,7 @@
 ## 安装
 
 1. 确认设备为 **arm64**（非 arm64 会在安装器里被拒绝）。
-2. 管理器刷入 `nanhe_ovo-v1.3.1-20261121.zip`：Magisk → 模块 → 从本地安装；KernelSU / APatch → 模块 → 安装。
+2. 管理器刷入 `nanhe_ovo-v1.3.2-20261122.zip`：Magisk → 模块 → 从本地安装；KernelSU / APatch → 模块 → 安装。
 3. 重启。
 4. 打开面板：KernelSU / APatch 管理器 → 模块 → 南何ovo → 打开 WebUI；Magisk 本体没有模块 WebUI，可用 KsuWebUIStandalone 等工具打开 `/data/adb/modules/nanhe_ovo/webroot/index.html`。
 
@@ -91,8 +97,8 @@ python tools\build.py
 
 产物：
 
-- `dist/nanhe_ovo-v1.3.1-20261121.zip` —— 可刷入模块
-- `dist/nanhe_ovo-src-v1.3.1.zip` —— 源码包
+- `dist/nanhe_ovo-v1.3.2-20261122.zip` —— 可刷入模块
+- `dist/nanhe_ovo-src-v1.3.2.zip` —— 源码包
 
 构建校验：脚本 LF 换行、无 BOM、`#!/system/bin/sh` 首行、zip 内脚本 755、`module.prop` 必填字段；文本写入 zip 时统一转 LF。
 

@@ -9,9 +9,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 MODULE = ROOT / "module"
 DIST = ROOT / "dist"
-STAMP = (2026, 11, 21, 0, 0, 0)
-VERSION = "v1.3.1"
-BUILD = "20261121"
+STAMP = (2026, 11, 22, 0, 0, 0)
+VERSION = "v1.3.2"
+BUILD = "20261122"
 ZIP_NAME = f"nanhe_ovo-{VERSION}-{BUILD}.zip"
 SRC_NAME = f"nanhe_ovo-src-{VERSION}.zip"
 

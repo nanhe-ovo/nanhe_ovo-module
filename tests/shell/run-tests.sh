@@ -489,6 +489,13 @@ eq "安装后移除平台配置目录" "no" "$([ -d "$INST/mod/config" ] && echo
 has "安装提示包含 WebUI 指引" "$OUT" "打开 WebUI"
 
 printf '\n'
+make_install "$INST" mt6991 arm64-v8a "$INST/mod"
+run_install
+eq "Dimensity 9400 使用专有配置" "same" "$(cmp -s "$INST/sdcard/Android/yc/uperf/uperf.json" "$MODULE/config/mtd9400.json" && echo same || echo diff)"
+eq "D9400 配置名已记录" "$(cat "$INST/data/adb/nanhe_ovo/device_config.txt")" mtd9400
+has "D9400 配置含功耗模型" "$(cat "$MODULE/config/mtd9400.json")" '"typicalFreq": 3.63'
+
+printf '\n'
 make_install "$INST" sun arm64-v8a "$INST/mod"
 run_install
 eq "映射名缺配置时回落到模板" "same" "$(cmp -s "$INST/sdcard/Android/yc/uperf/uperf.json" "$MODULE/config/template.json" && echo same || echo diff)"

@@ -4,9 +4,11 @@
 
 界面是 Miuix 观感的白卡 + 悬浮液态玻璃底栏，**不联网、不上传任何数据**。
 
+想直接拿文案去发布，看 [docs/模块介绍.md](docs/模块介绍.md)：一句话版 / 群公告短版 / 发布帖长版，含完整出处表与已知边界。
+
 - 版本：`v1.3.1`（versionCode `20261121`）
 - 模块 id：`nanhe_ovo`
-- 可刷入包：1,838 KB / 103 个文件（见 Releases）
+- 可刷入包：[`nanhe_ovo-v1.3.1-20261121.zip`](https://github.com/nanhe-ovo/nanhe_ovo-module/releases/download/v1.3.1/nanhe_ovo-v1.3.1-20261121.zip)（1,838 KB / 103 个文件）
 - 要求：**arm64** 设备（内置 uperf 与 busybox 只有 aarch64 版本）
 
 ![首页](docs/screenshots/ui-overview.png)

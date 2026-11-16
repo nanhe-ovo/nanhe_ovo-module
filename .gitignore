@@ -1,1 +1,14 @@
-# placeholder
+# 构建产物
+dist/*.zip
+dist/preview/
+!dist/preview/ui-*.png
+
+# 渲染临时文件
+*.log
+render-out*.txt
+dom.html
+edge-profile-*/
+
+# 系统垃圾
+Thumbs.db
+.DS_Store

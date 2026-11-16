@@ -1,0 +1,11 @@
+{
+  "name": "nanhe-ovo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "南何ovo 模块源码：WebUI 前端与 node 测试都用 CommonJS 方式加载。",
+  "scripts": {
+    "test": "node tests/core.test.cjs",
+    "render": "node tests/render.cjs"
+  }
+}

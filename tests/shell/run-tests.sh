@@ -1,0 +1,652 @@
+#!/usr/bin/env bash
+# 南何ovo · 后端与安装器的 POSIX 验证。
+# 说明：本脚本在 Linux/macOS 上运行 module/ 内的脚本，用 PATH 兜底桩替换
+# Android 专有命令（getprop / id / stat / pm / pidof），并把固定的绝对路径
+# 替换到一个临时根目录（$FAKE）。替换后的副本与出厂脚本只差路径前缀。
+set -u
+
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+MODULE="$ROOT/module"
+WORK=$(mktemp -d)
+SH=$(command -v dash 2>/dev/null || command -v sh)
+REAL_STAT=$(command -v stat)
+REAL_TAIL=$(command -v tail)
+REAL_ID=$(command -v id)
+HOST_PATH="$PATH"
+F=0
+
+ok()   { printf 'PASS %s\n' "$1"; }
+bad()  { printf 'FAIL %s\n' "$1"; F=1; }
+skip() { printf 'SKIP %s\n' "$1"; }
+eq()   { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1（期望 [$3]，实际 [$2]）"; fi; }
+has()  { case "$2" in *"$3"*) ok "$1" ;; *) bad "$1（输出未包含 [$3]，实际 [$2]）" ;; esac; }
+hasnt(){ case "$2" in *"$3"*) bad "$1（输出意外包含 [$3]）" ;; *) ok "$1" ;; esac; }
+
+cleanup_all() { rm -rf "$WORK"; }
+# KEEP_WORK=1 保留临时目录便于排查
+if [ "${KEEP_WORK:-0}" = 1 ]; then trap - 0; else trap cleanup_all 0; fi
+
+########################################
+# 1. 语法检查
+########################################
+printf '\n== 语法检查（%s）==\n' "$SH"
+SYNTAX_FAIL=0
+while IFS= read -r f; do
+    if ! "$SH" -n "$f" 2>"$WORK/syntax.err"; then
+        bad "语法 ${f#$ROOT/}：$(cat "$WORK/syntax.err")"; SYNTAX_FAIL=1
+    fi
+done < <(find "$MODULE" -name '*.sh' -o -name 'customize.sh' -o -name 'service.sh' -o -name 'post-fs-data.sh' -o -name 'uninstall.sh' | sort)
+[ "$SYNTAX_FAIL" = 0 ] && ok "全部 shell 脚本语法通过"
+
+for f in customize.sh service.sh post-fs-data.sh uninstall.sh bin/uperf bin/busybox/busybox script/control.sh script/initsvc.sh; do
+    [ -x "$MODULE/$f" ] || bad "缺少可执行位：$f"
+done
+ok "模块内脚本与二进制具备可执行位"
+
+########################################
+# 2. 构造假的 sysfs / sdcard / Android 命令
+########################################
+FAKE="$WORK/fake"
+make_fixture() {
+    D=$1
+    rm -rf "$D"; mkdir -p "$D"
+    # CPU 策略 0
+    mkdir -p "$D/sys/devices/system/cpu/cpufreq/policy0"
+    printf '%s\n' 300000 > "$D/sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq"
+    printf '%s\n' 1800000 > "$D/sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq"
+    printf '%s\n' 1200000 > "$D/sys/devices/system/cpu/cpufreq/policy0/scaling_cur_freq"
+    printf '%s\n' "300000 600000 1200000 1800000" > "$D/sys/devices/system/cpu/cpufreq/policy0/scaling_available_frequencies"
+    # CPU 策略 4
+    mkdir -p "$D/sys/devices/system/cpu/cpufreq/policy4"
+    printf '%s\n' 710400 > "$D/sys/devices/system/cpu/cpufreq/policy4/scaling_min_freq"
+    printf '%s\n' 2803200 > "$D/sys/devices/system/cpu/cpufreq/policy4/scaling_max_freq"
+    printf '%s\n' 1800000 > "$D/sys/devices/system/cpu/cpufreq/policy4/scaling_cur_freq"
+    printf '%s\n' "710400 1200000 1800000 2400000 2803200" > "$D/sys/devices/system/cpu/cpufreq/policy4/scaling_available_frequencies"
+    # GPU（kgsl 风格）
+    mkdir -p "$D/sys/devices/platform/kgsl-3d0/devfreq"
+    printf '%s\n' 220000000 > "$D/sys/devices/platform/kgsl-3d0/devfreq/min_freq"
+    printf '%s\n' 903000000 > "$D/sys/devices/platform/kgsl-3d0/devfreq/max_freq"
+    printf '%s\n' 578000000 > "$D/sys/devices/platform/kgsl-3d0/devfreq/cur_freq"
+    printf '%s\n' "220000000 525000000 578000000 903000000" > "$D/sys/devices/platform/kgsl-3d0/devfreq/available_frequencies"
+    mkdir -p "$D/sys/class/devfreq"
+    ln -s ../../devices/platform/kgsl-3d0/devfreq "$D/sys/class/devfreq/kgsl-3d0"
+    # 非 GPU devfreq：必须被过滤掉
+    mkdir -p "$D/sys/devices/platform/soc/sramc/devfreq"
+    printf '%s\n' 100000000 > "$D/sys/devices/platform/soc/sramc/devfreq/min_freq"
+    printf '%s\n' 200000000 > "$D/sys/devices/platform/soc/sramc/devfreq/max_freq"
+    printf '%s\n' "100000000 200000000" > "$D/sys/devices/platform/soc/sramc/devfreq/available_frequencies"
+    # GPU 但没有频率表：必须拒绝写入（真实设备同样通过 class 目录暴露）
+    # 目录名排在 kgsl 之后，保证 gpu-0 是有频率表的那一个
+    mkdir -p "$D/sys/devices/platform/vendor-gpu/devfreq"
+    printf '%s\n' 300000000 > "$D/sys/devices/platform/vendor-gpu/devfreq/min_freq"
+    printf '%s\n' 600000000 > "$D/sys/devices/platform/vendor-gpu/devfreq/max_freq"
+    ln -s ../../devices/platform/vendor-gpu/devfreq "$D/sys/class/devfreq/vendor-gpu"
+    # 用户目录
+    mkdir -p "$D/sdcard/Android/yc/uperf"
+    cp "$MODULE/config/sdm8g2.json" "$D/sdcard/Android/yc/uperf/uperf.json"
+    cp "$MODULE/config/perapp_powermode.txt" "$D/sdcard/Android/yc/uperf/perapp_powermode.txt"
+    printf '%s\n' balance > "$D/sdcard/Android/yc/uperf/cur_powermode.txt"
+    # 模块目录（提供 module.prop 版本）
+    mkdir -p "$D/data/adb/modules/nanhe_ovo"
+    cp "$MODULE/module.prop" "$D/data/adb/modules/nanhe_ovo/module.prop"
+    # 运行时
+    mkdir -p "$D/data/adb/nanhe_ovo"
+    printf '%s\n' aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee > "$D/boot_id"
+    # 系统包清单（apps 的兜底枚举来源）
+    mkdir -p "$D/data/system"
+    printf '%s\n' "com.example.camera 10234 0 /data/user/0/com.example.camera default:targetSdkVersion=33" \
+        "com.example.game 10235 0 /data/user/0/com.example.game default:targetSdkVersion=33" \
+        > "$D/data/system/packages.list"
+    # Android 命令桩
+    mkdir -p "$D/bin"
+    printf '#!/bin/sh\necho 0\n' > "$D/bin/id"
+    printf '#!/bin/sh\nif [ "$1" = "-c" ] && [ "$2" = "%%u" ]; then echo 0; exit 0; fi\nexec %s "$@"\n' "$REAL_STAT" > "$D/bin/stat"
+    printf '#!/bin/sh\nif [ -f "%s/uperf.running" ]; then echo 4242; exit 0; fi\nexit 1\n' "$D" > "$D/bin/pidof"
+    printf '#!/bin/sh\nprintf "package:com.android.settings\\npackage:com.example.game\\njunk\\npackage:\\npackage:com.example.reader\\n"\n' > "$D/bin/pm"
+    # 屏幕 / 机型信息相关的系统命令桩
+    printf '#!/bin/sh\n[ -f "%s/dumpsys_silent" ] && exit 0\n[ -f "%s/dumpsys_variant" ] && { cat "%s/dumpsys_variant"; exit 0; }\ncase "$1" in\n display) printf "DisplayDeviceInfo{name=Built-in, supportedModes [{id=1, width=1880, height=3008, fps=60.000004}, {id=2, width=1880, height=3008, fps=120.0}, {id=3, width=1880, height=3008, fps=144.0}, {id=4, fps=480.0}]}\\n" ;;\n SurfaceFlinger) printf "Display 0: refresh-rate: 120.000000 Hz\\n" ;;\n battery) printf "Current Battery Service state:\\n  level: 82\\n  temperature: 350\\n  health: 2\\n  status: 2\\n  technology: Li-poly\\n" ;;\nesac\n' "$D" "$D" "$D" > "$D/bin/dumpsys"
+    printf '#!/bin/sh\nS="%s/settings_store"\n[ -f "$S" ] || : > "$S"\ncase "$1" in\n get) v=$(awk -F= -v k="$3" '"'"'$1==k{v=$2} END{print v}'"'"' "$S"); if [ -n "$v" ]; then printf "%%s\\n" "$v"; else printf "null\\n"; fi ;;\n put) printf "%%s=%%s\\n" "$3" "$4" >> "$S" ;;\n delete) awk -F= -v k="$3" '"'"'$1!=k'"'"' "$S" > "$S.tmp"; mv "$S.tmp" "$S" ;;\nesac\n' "$D" > "$D/bin/settings"
+    printf '#!/bin/sh\ncase "$1" in\n size) echo "Physical size: 1880x3008" ;;\n density) echo "Physical density: 450" ;;\nesac\n' > "$D/bin/wm"
+    printf '#!/bin/sh\ncase "$1" in\n ro.product.brand) echo REDMI ;;\n ro.product.model) echo 25079RPDCC ;;\n ro.product.manufacturer) echo Xiaomi ;;\n ro.product.device) echo turner ;;\n ro.build.fingerprint) echo "Redmi/turner/turner:17/CP2A.260605.016/OS4.0.3.0:user/release-keys" ;;\n ro.build.version.release) echo 17 ;;\n ro.build.version.sdk) echo 37 ;;\n ro.build.version.security_patch) echo 2026-10-01 ;;\n ro.boot.slot_suffix) echo _a ;;\n ro.build.id) echo CP2A.260605.016 ;;\n ro.product.cpu.abi) echo arm64-v8a ;;\n ro.product.cpu.abilist) echo "arm64-v8a,armeabi-v7a,armeabi" ;;\n ro.hardware) echo mt8799 ;;\n ro.product.board) echo turner ;;\n sys.boot_completed) echo 1 ;;\n *) echo "" ;;\nesac\n' > "$D/bin/getprop"
+    printf '#!/bin/sh\necho 6.6.118-android15-test\n' > "$D/bin/uname"
+    printf '#!/bin/sh\necho Enforcing\n' > "$D/bin/getenforce"
+    printf '#!/bin/sh\nexit 0\n' > "$D/bin/sleep"
+    # 机型信息读取的 sysfs 夹具
+    mkdir -p "$D/sys/devices/system/cpu"
+    printf '0-7\n' > "$D/sys/devices/system/cpu/possible"
+    mkdir -p "$D/sys/class/thermal/thermal_zone0"
+    printf 'cpu-0\n' > "$D/sys/class/thermal/thermal_zone0/type"
+    printf '61500\n' > "$D/sys/class/thermal/thermal_zone0/temp"
+    chmod +x "$D/bin/"*
+    # 脚本副本：只替换固定路径前缀；后端内部会重置 PATH，这里把桩目录加进去
+    sed -e "s#/data/system/packages.list#$D/data/system/packages.list#g" \
+        -e "s#/data/adb/modules/nanhe_ovo#$D/data/adb/modules/nanhe_ovo#g" \
+        -e "s#/data/adb/nanhe_ovo#$D/data/adb/nanhe_ovo#g" \
+        -e "s#/sdcard#$D/sdcard#g" \
+        -e "s#/proc/sys/kernel/random/boot_id#$D/boot_id#g" \
+        -e "s#/sys/#$D/sys/#g" \
+        -e "s#^PATH=/system/bin:/system/xbin#PATH=$D/bin:$HOST_PATH#" \
+        "$MODULE/script/control.sh" > "$D/control.sh"
+    chmod +x "$D/control.sh"
+    # 开机刷新率脚本副本：只替换运行时目录前缀
+    sed -e "s#/data/adb/nanhe_ovo#$D/data/adb/nanhe_ovo#g" \
+        "$MODULE/script/refresh_apply.sh" > "$D/refresh_apply.sh"
+    chmod +x "$D/refresh_apply.sh"
+    grep -q "PATH=$D/bin:$HOST_PATH" "$D/control.sh" ||
+        bad "后端 PATH 行未被替换（control.sh 的内部 PATH 写法已变动，桩命令无法生效）"
+    grep -q "sys/kernel/random/boot_id" "$D/control.sh" &&
+        bad "boot_id 路径未被完整替换（/sys/ 规则先于 boot_id 规则改写）"
+}
+make_fixture "$FAKE"
+D=$FAKE
+CTL="$FAKE/control.sh"
+PATH="$FAKE/bin:$PATH"
+export PATH
+
+# 记录一次调用
+run_ctl() { OUT=$("$SH" "$CTL" "$@" 2>"$FAKE/last.err"); RC=$?; ERR=$(cat "$FAKE/last.err"); }
+UP="$FAKE/sdcard/Android/yc/uperf"
+sget() { awk -F= -v k="$1" '$1==k{v=$2} END{print v}' "$FAKE/settings_store" 2>/dev/null; }
+RR="$FAKE/data/adb/nanhe_ovo"
+
+printf '\n== control.sh 状态 ==\n'
+run_ctl status
+eq "status 退出码 0" "$RC" 0
+eq "可用模式来自 presets（5 个）" "$(printf '%s\n' "$OUT" | awk -F'\t' '$1=="info"&&$2=="modes"{print $3}' | tr ' ' '\n' | sort | tr '\n' ' ')" "balance crazy fast performance powersave "
+eq "模式列表排序稳定" "$(printf '%s\n' "$OUT" | awk -F'\t' '$1=="info"&&$2=="modes"{print $3}')" "balance crazy fast performance powersave"
+eq "设备节点 4 个（含无表 GPU）" "$(printf '%s\n' "$OUT" | grep -c '^device')" 4
+hasnt "非 GPU devfreq 被过滤" "$OUT" "sramc"
+eq "当前模式" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="mode"{print $3}')" balance
+eq "调优默认开启" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="tune"{print $3}')" 开启
+eq "版本来自 module.prop" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="version"{print $3}')" "$(awk -F '=' '$1 == "version" {print $2; exit}' "$MODULE/module.prop")"
+eq "uperf 未运行" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="uperf"{print $3}')" 未运行
+: > "$FAKE/uperf.running"
+run_ctl status
+eq "uperf 运行中" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="uperf"{print $3}')" 运行中
+rm -f "$FAKE/uperf.running"
+has "无表 GPU 行仍报告（模拟厂商锁频）" "$OUT" "gpu-1"
+
+printf '\n== 模式切换 ==\n'
+INODE_BEFORE=$("$REAL_STAT" -c %i "$UP/cur_powermode.txt")
+run_ctl mode performance
+eq "mode 成功" "$RC" 0
+eq "模式已写入" "$(cat "$UP/cur_powermode.txt")" performance
+eq "写入保持 inode（inotify 可用）" "$("$REAL_STAT" -c %i "$UP/cur_powermode.txt")" "$INODE_BEFORE"
+eq "存在 .bak" "yes" "$([ -f "$UP/cur_powermode.txt.bak" ] && echo yes)"
+run_ctl mode turbo
+[ "$RC" != 0 ] && ok "不存在的模式被拒绝" || bad "不存在的模式被接受"
+eq "拒绝后文件未变" "$(cat "$UP/cur_powermode.txt")" performance
+run_ctl mode 'fast;reboot'
+[ "$RC" != 0 ] && ok "注入式模式名被拒绝" || bad "注入式模式名被接受"
+run_ctl mode
+[ "$RC" != 0 ] && ok "缺少参数被拒绝" || bad "缺少参数被接受"
+run_ctl mode crazy extra
+[ "$RC" != 0 ] && ok "参数过多被拒绝" || bad "参数过多被接受"
+
+printf '\n== 分应用规则 ==\n'
+run_ctl rule com.example.game fast
+eq "新增规则成功" "$RC" 0
+has "规则已落盘" "$(cat "$UP/perapp_powermode.txt")" "com.example.game fast"
+run_ctl rule com.example.game performance
+eq "同一包更新策略" "$(grep -c 'com.example.game' "$UP/perapp_powermode.txt")" 1
+has "策略已更新" "$(cat "$UP/perapp_powermode.txt")" "com.example.game performance"
+run_ctl rule com.example.game delete
+eq "删除应用规则" "$(grep -c 'com.example.game' "$UP/perapp_powermode.txt")" 0
+run_ctl rule '*'
+[ "$RC" != 0 ] && ok "缺少策略参数被拒绝" || bad "缺少策略参数被接受"
+run_ctl rule '*' delete
+eq "删除默认规则成功" "$RC" 0
+hasnt "默认规则已移除" "$(cat "$UP/perapp_powermode.txt")" "* balance"
+run_ctl rule '-' powersave
+eq "写入熄屏规则" "$RC" 0
+run_ctl rule 'com.x$(id)' balance
+[ "$RC" != 0 ] && ok "非法包名被拒绝" || bad "非法包名被接受"
+run_ctl rule com.example.game turbo
+[ "$RC" != 0 ] && ok "规则不接受不存在的模式" || bad "规则接受了不存在的模式"
+rm -f "$UP/perapp_powermode.txt"
+ln -s "$WORK/outside.txt" "$UP/perapp_powermode.txt"
+run_ctl rule com.example.game fast
+[ "$RC" != 0 ] && ok "规则文件是符号链接时拒绝写入" || bad "跟随了符号链接"
+eq "符号链接目标未被写" "no" "$([ -s "$WORK/outside.txt" ] && echo yes || echo no)"
+rm -f "$UP/perapp_powermode.txt"
+cp "$MODULE/config/perapp_powermode.txt" "$UP/perapp_powermode.txt"
+
+printf '\n== 频率控制 ==\n'
+run_ctl freq cpu-policy0 600000 1200000
+eq "合法区间写入成功" "$RC" 0
+eq "scaling_min 已写" "$(cat "$D/sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq")" 600000
+eq "scaling_max 已写" "$(cat "$D/sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq")" 1200000
+eq "生成开机基线" "1" "$(ls "$D/data/adb/nanhe_ovo/runtime" | grep -c baseline)"
+has "返回 ok freq" "$OUT" "ok	freq	cpu-policy0	600000	1200000"
+run_ctl freq cpu-policy0 500000 1200000
+[ "$RC" != 0 ] && ok "表外频率被拒绝" || bad "接受了表外频率"
+eq "拒绝后 min 未变" "$(cat "$D/sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq")" 600000
+run_ctl freq cpu-policy0 1200000 600000
+[ "$RC" != 0 ] && ok "min > max 被拒绝" || bad "接受了 min > max"
+run_ctl freq gpu-1 300000000 600000000
+[ "$RC" != 0 ] && ok "无频率表的 GPU 拒绝写入" || bad "无频率表仍写入"
+run_ctl freq gpu-0 525000000 903000000
+eq "GPU 区间写入成功" "$RC" 0
+eq "GPU min_freq 已写" "$(cat "$D/sys/devices/platform/kgsl-3d0/devfreq/min_freq")" 525000000
+run_ctl freq cpu-policy9 300000 600000
+[ "$RC" != 0 ] && ok "不存在的节点被拒绝" || bad "不存在的节点被接受"
+run_ctl freq '../../etc' 1 2
+[ "$RC" != 0 ] && ok "非法节点标识被拒绝" || bad "非法节点标识被接受"
+
+printf '\n== 频率回滚 ==\n'
+ROLLBACK_SETUP=no
+RB="$WORK/rb"
+make_fixture "$RB"
+chattr +i "$RB/sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq" 2>/dev/null && ROLLBACK_SETUP=chattr
+if [ "$ROLLBACK_SETUP" = no ] && [ "$("$REAL_ID" -u)" != 0 ]; then
+    chmod 440 "$RB/sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq" && ROLLBACK_SETUP=chmod
+fi
+if [ "$ROLLBACK_SETUP" = no ]; then
+    skip "回滚路径（当前环境无法模拟只读节点：root + 无 chattr）"
+else
+    RBCTL="$RB/control.sh"
+    OUT=$("$SH" "$RBCTL" freq cpu-policy0 600000 1200000 2>"$RB/err"); RC=$?
+    [ "$RC" != 0 ] && ok "写入失败返回非 0" || bad "写入失败被判成功"
+    eq "回滚后 min 恢复原值" "$(cat "$RB/sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq")" 300000
+    eq "max 保持原值" "$(cat "$RB/sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq")" 1800000
+    has "错误信息标注回滚" "$(cat "$RB/err")" "rolling back"
+    [ "$ROLLBACK_SETUP" = chattr ] && chattr -i "$RB/sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq" 2>/dev/null
+fi
+
+printf '\n== 基线恢复 ==\n'
+D=$FAKE
+run_ctl restore
+eq "restore 成功" "$RC" 0
+eq "CPU0 min 回到开机值" "$(cat "$D/sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq")" 300000
+eq "CPU0 max 回到开机值" "$(cat "$D/sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq")" 1800000
+eq "GPU min 回到开机值" "$(cat "$D/sys/devices/platform/kgsl-3d0/devfreq/min_freq")" 220000000
+BASE=$(ls "$D/data/adb/nanhe_ovo/runtime/" | grep baseline)
+printf 'gpu-9\t%s\n' "$D/sys/devices/platform/vendor-gpu/devfreq" >> "$D/data/adb/nanhe_ovo/runtime/$BASE"
+run_ctl restore
+[ "$RC" != 0 ] && ok "基线记录不完整时拒绝恢复" || bad "接受了损坏的基线"
+rm -f "$D/data/adb/nanhe_ovo/runtime/$BASE"
+run_ctl restore
+[ "$RC" != 0 ] && ok "没有基线时 restore 失败" || bad "无基线仍报告成功"
+
+printf '\n== 调优开关 ==\n'
+run_ctl tune off
+eq "tune off 成功" "$RC" 0
+eq "生成关闭标记" "yes" "$([ -f "$D/data/adb/nanhe_ovo/tune_disabled" ] && echo yes)"
+run_ctl status
+eq "状态显示关闭" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="tune"{print $3}')" 关闭
+run_ctl tune on
+eq "tune on 成功" "$RC" 0
+eq "标记已移除" "no" "$([ -f "$D/data/adb/nanhe_ovo/tune_disabled" ] && echo yes || echo no)"
+run_ctl tune maybe
+[ "$RC" != 0 ] && ok "非法 tune 参数被拒绝" || bad "非法 tune 参数被接受"
+
+printf '\n== 应用列表与并发保护 ==\n'
+run_ctl apps
+eq "只输出合法包名" "$(printf '%s\n' "$OUT" | grep -c '^com\.')" 3
+hasnt "过滤垃圾行" "$OUT" "junk"
+run_ctl rules
+eq "rules 输出规则原文" "$RC" 0
+
+printf '\n== 应用清单降级（真机 pm 失败场景）==\n'
+mv "$D/bin/pm" "$D/bin/pm.off"
+run_ctl apps
+eq "pm 不可用时 apps 仍退出 0" "$RC" 0
+has "回落到系统包清单" "$OUT" "com.example.camera"
+run_ctl status
+eq "pm 不可用时 status 不受影响" "$RC" 0
+eq "status 仍报告 4 个设备" "$(printf '%s\n' "$OUT" | grep -c '^device')" 4
+
+mv "$D/data/system/packages.list" "$D/packages.list.off"
+run_ctl apps
+eq "全部枚举失败仍退出 0" "$RC" 0
+eq "全部失败时清单为空" "" "$OUT"
+has "全部失败时给出告警" "$ERR" "package enumeration unavailable"
+mv "$D/packages.list.off" "$D/data/system/packages.list"
+mv "$D/bin/pm.off" "$D/bin/pm"
+
+printf '\n== 屏幕刷新率（30–240Hz 档位与写入）==\n'
+run_ctl status
+eq "刷新率档位 10 个" "30 48 60 72 90 120 144 165 180 240" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="refresh_tiers"{print $3}')"
+eq "只保留设备声明过的档位" "60 120 144" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="refresh_supported"{print $3}')"
+eq "当前刷新率来自 SurfaceFlinger" "120" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="refresh"{print $3}')"
+eq "尚未设置目标" "none" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="refresh_target"{print $3}')"
+eq "档位表来自设备 dump" "1" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="refresh_known"{print $3}')"
+
+run_ctl refresh 120 on
+eq "写入 120Hz 成功" "0" "$RC"
+eq "peak_refresh_rate 已写入" "120" "$(sget peak_refresh_rate)"
+eq "min_refresh_rate 已写入（钉住下限）" "120" "$(sget min_refresh_rate)"
+eq "目标已记录，供开机应用" "120" "$(cat "$RR/refresh.txt")"
+eq "锁定状态已记录" "yes" "$([ -f "$RR/refresh_pin" ] && echo yes || echo no)"
+
+run_ctl refresh 144 off
+eq "只写上限时成功" "0" "$RC"
+eq "peak 更新为 144" "144" "$(sget peak_refresh_rate)"
+eq "关闭锁定时删除下限" "" "$(sget min_refresh_rate)"
+eq "锁定状态已清除" "no" "$([ -f "$RR/refresh_pin" ] && echo yes || echo no)"
+
+run_ctl refresh 90 on
+[ "$RC" != 0 ] && ok "不支持的档位被拒绝" || bad "不支持的档位被接受"
+has "拒绝文案说明不支持" "$ERR" "90 Hz is not supported by this device"
+eq "拒绝后上限未变" "144" "$(sget peak_refresh_rate)"
+
+run_ctl refresh 480 on
+[ "$RC" != 0 ] && ok "超出 30–240 范围被拒绝" || bad "越界刷新率被接受"
+has "越界文案" "$ERR" "invalid refresh rate"
+run_ctl refresh 120 maybe
+[ "$RC" != 0 ] && ok "非法锁定参数被拒绝" || bad "非法锁定参数被接受"
+
+ln -s /tmp/not-here "$RR/refresh.txt.bad" 2>/dev/null
+rm -f "$RR/refresh.txt"
+ln -s /tmp/not-here "$RR/refresh.txt"
+run_ctl refresh 120 on
+[ "$RC" != 0 ] && ok "刷新率状态文件是符号链接时拒绝写入" || bad "符号链接未被拒绝"
+has "符号链接文案" "$ERR" "refresh state symlink refused"
+rm -f "$RR/refresh.txt" "$RR/refresh.txt.bad"
+printf '%s\n' 120 > "$RR/refresh.txt"
+
+printf '\n== 刷新率档位读取（多种 dump 写法与读不到时的兜底）==\n'
+# 真机上档位不一定写成 fps=：可能只有 refreshRate= / vsyncPeriod=（纳秒）/ @120Hz
+cat > "$D/dumpsys_variant" <<'VARIANT'
+DisplayDeviceInfo{"Built-in Screen": 1880 x 3008}
+  modeSupport: refreshRate=90.0
+  vsyncPeriod=8333333
+  modeString 1880x3008@120.0Hz
+VARIANT
+run_ctl status
+eq "refreshRate= 写法可读出" "90" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="refresh_supported"{print $3}' | awk '{print $1}')"
+eq "vsyncPeriod 与 @120Hz 写法可读出" "90 120" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="refresh_supported"{print $3}')"
+run_ctl refresh 90 on
+eq "读到的档位可以写入" "$RC" 0
+eq "写入的档位已生效" "$(sget peak_refresh_rate)" 90
+run_ctl refresh 144 on
+[ "$RC" != 0 ] && ok "设备没声明的档位仍被拒绝" || bad "未声明的档位被接受"
+rm -f "$D/dumpsys_variant"
+
+# 读不到档位表（真机截图里的情形）：不能把全部档位都禁用，放开给用户尝试
+: > "$D/dumpsys_silent"
+run_ctl status
+eq "读不到档位表时 refresh_known=0" "0" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="refresh_known"{print $3}')"
+eq "读不到档位表时放开全部 10 档" "30 48 60 72 90 120 144 165 180 240" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="refresh_supported"{print $3}')"
+run_ctl refresh 240 on
+eq "未读到档位表时不拒绝写入" "$RC" 0
+eq "写入值按原样落盘" "$(sget peak_refresh_rate)" 240
+rm -f "$D/dumpsys_silent"
+run_ctl status
+eq "重新读到档位表后恢复严格校验" "1" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="refresh_known"{print $3}')"
+run_ctl refresh 90 on
+[ "$RC" != 0 ] && ok "恢复严格校验后未声明档位再次被拒绝" || bad "恢复后仍接受未声明档位"
+run_ctl refresh 120 on
+eq "回到 120Hz 供后续用例" "$RC" 0
+
+# 两份脚本里的解析实现必须一致，否则开机脚本会按另一套规则解析
+fn_body() { awk -v fn="$2() {" 'index($0, fn) { f = 1 } f { print } f && /^}/ { exit }' "$1"; }
+eq "两处 refresh_table 实现逐字一致" "$(fn_body "$D/refresh_apply.sh" refresh_table)" "$(fn_body "$D/control.sh" refresh_table)"
+
+printf '\n== 机型信息（关于页数据源）==\n'
+run_ctl deviceinfo
+kv() { printf '%s\n' "$OUT" | awk -F'\t' -v l="$1" '$3==l{print $4; exit}'; }
+eq "deviceinfo 退出码 0" "$RC" "0"
+eq "品牌取自 ro.product.brand" "$(kv 品牌)" "REDMI"
+eq "型号取自 ro.product.model" "$(kv 型号)" "25079RPDCC"
+eq "制造商取自 ro.product.manufacturer" "$(kv 制造商)" "Xiaomi"
+eq "指纹完整保留" "$(kv 指纹)" "Redmi/turner/turner:17/CP2A.260605.016/OS4.0.3.0:user/release-keys"
+eq "含空格的标签带值（Android 版本）" "$(kv "Android 版本")" "17"
+eq "含空格的标签带值（API 级别）" "$(kv "API 级别")" "37"
+eq "含空格的标签带值（Build 号）" "$(kv "Build 号")" "CP2A.260605.016"
+eq "SELinux 本地化" "$(kv SELinux)" "强制 Enforcing"
+eq "内核版本取自 uname" "$(kv 内核版本)" "6.6.118-android15-test"
+eq "核心数由 possible 范围算得" "$(kv 核心数)" "8"
+eq "含空格的标签带值（支持 ABI）" "$(kv "支持 ABI")" "arm64-v8a/armeabi-v7a/armeabi"
+eq "含空格的标签带值（CPU 温度）" "$(kv "CPU 温度")" "61.5 °C"
+eq "分辨率带 × 与单位" "$(kv 分辨率)" "1880 × 3008 px"
+eq "像素密度带 dpi" "$(kv 像素密度)" "450 dpi"
+eq "电池电量带百分号" "$(kv 电量)" "82%"
+eq "电池温度按十分度换算" "$(kv 温度)" "35.0 °C"
+eq "电池健康已本地化" "$(kv 健康)" "良好"
+eq "电池状态已本地化" "$(kv 状态)" "充电中"
+eq "每个分组都有输出" "$(printf '%s\n' "$OUT" | awk -F'\t' '$1=="kv"{print $2}' | sort -u | tr '\n' ' ')" "battery device hardware memory screen storage system "
+eq "只有 kv 与结尾 ok 两类行" "0" "$(printf '%s\n' "$OUT" | awk -F'\t' '$1!="kv"&&$1!="ok"' | wc -l | tr -d ' ')"
+eq "结尾为 ok deviceinfo" "ok deviceinfo" "$(printf '%s\n' "$OUT" | awk -F'\t' 'END{print $1, $2}')"
+
+printf '\n== 开机刷新率（修开机锁 60Hz）==\n'
+BOOT_RUN() { BOOT_OUT=$(PATH="$FAKE/bin:$PATH" "$SH" "$FAKE/refresh_apply.sh" 2>&1); BOOT_RC=$?; }
+rm -f "$RR/refresh.txt" "$RR/refresh_pin" "$FAKE/settings_store"
+BOOT_RUN
+eq "无记录时退出 0（不影响开机）" "0" "$BOOT_RC"
+eq "首次开机取本机最高档" "144" "$(cat "$RR/refresh.txt")"
+eq "开机写入 peak" "144" "$(sget peak_refresh_rate)"
+eq "开机同时钉住下限" "144" "$(sget min_refresh_rate)"
+has "日志说明默认取最高档" "$BOOT_OUT" "首次开机默认取最高档 144Hz"
+
+printf '%s\n' 120 > "$RR/refresh.txt"; : > "$RR/refresh_pin"
+rm -f "$FAKE/settings_store"
+BOOT_RUN
+eq "按已保存目标应用" "120" "$(sget peak_refresh_rate)"
+eq "锁定开启时下限同步" "120" "$(sget min_refresh_rate)"
+
+rm -f "$RR/refresh_pin"
+rm -f "$FAKE/settings_store"
+BOOT_RUN
+eq "关闭锁定时只写上限" "120" "$(sget peak_refresh_rate)"
+eq "关闭锁定时不留下限" "" "$(sget min_refresh_rate)"
+
+printf '%s\n' 90 > "$RR/refresh.txt"
+rm -f "$FAKE/settings_store"
+BOOT_RUN
+eq "保存的档位不被设备支持时回落最高档" "144" "$(cat "$RR/refresh.txt")"
+
+# 开机脚本同样要能在读不到档位表时工作：沿用系统当前值，而不是跳过
+: > "$D/dumpsys_silent"
+rm -f "$RR/refresh.txt" "$RR/refresh_pin" "$FAKE/settings_store"
+printf '%s\n' peak_refresh_rate=120 > "$FAKE/settings_store"
+BOOT_RUN
+eq "读不到档位表时沿用当前刷新率" "120" "$(cat "$RR/refresh.txt")"
+eq "沿用当前值时会写入 peak" "$(sget peak_refresh_rate)" 120
+has "日志说明沿用当前刷新率" "$BOOT_OUT" "未读到档位表，沿用当前刷新率 120Hz"
+rm -f "$D/dumpsys_silent"
+mkdir -p "$D/data/adb/nanhe_ovo/runtime/lock.aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+run_ctl status
+[ "$RC" != 0 ] && ok "并发时拒绝执行" || bad "并发未加锁"
+has "提示后端占用" "$ERR" "backend busy"
+rmdir "$D/data/adb/nanhe_ovo/runtime/lock.aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+printf '\n== 运行时目录安全 ==\n'
+mv "$D/data/adb/nanhe_ovo/runtime" "$WORK/runtime-real"
+ln -s "$WORK/runtime-real" "$D/data/adb/nanhe_ovo/runtime"
+run_ctl status
+[ "$RC" != 0 ] && ok "运行时目录为符号链接时拒绝" || bad "接受了符号链接运行时目录"
+rm -f "$D/data/adb/nanhe_ovo/runtime"
+mv "$WORK/runtime-real" "$D/data/adb/nanhe_ovo/runtime"
+
+########################################
+# 3. 安装器
+########################################
+printf '\n== 安装器 ==\n'
+INST="$WORK/inst"
+make_install() {
+    D=$1; plat=$2; abi=$3; MODP=$4
+    rm -rf "$D"; mkdir -p "$D/bin"
+    cp -a "$MODULE" "$MODP"
+    sed -i \
+        -e "s#/data/adb/nanhe_ovo#$D/data/adb/nanhe_ovo#g" \
+        -e "s#/data/adb/modules#$D/data/adb/modules#g" \
+        -e "s#/sdcard#$D/sdcard#g" \
+        "$MODP/customize.sh" "$MODP/script/pathinfo.sh"
+    printf '#!/bin/sh\ncase "$1" in\n ro.product.cpu.abi) echo "%s";;\n ro.board.platform) echo "%s";;\n ro.product.board) echo "";;\n *) echo "";;\nesac\n' "$abi" "$plat" > "$D/bin/getprop"
+    chmod +x "$D/bin/getprop"
+}
+run_install() { OUT=$(PATH="$INST/bin:$PATH" MODPATH="$INST/mod" "$SH" "$INST/mod/customize.sh" 2>&1); RC=$?; }
+
+make_install "$INST" gs201 arm64-v8a "$INST/mod"
+run_install
+eq "arm64 + gs201 安装退出 0" "$RC" 0
+eq "写入的配置与 gs201.json 一致" "same" "$(cmp -s "$INST/sdcard/Android/yc/uperf/uperf.json" "$MODULE/config/gs201.json" && echo same || echo diff)"
+eq "平台配置名已记录" "$(cat "$INST/data/adb/nanhe_ovo/device_config.txt")" gs201
+eq "分应用规则已就位" "same" "$(cmp -s "$INST/sdcard/Android/yc/uperf/perapp_powermode.txt" "$MODULE/config/perapp_powermode.txt" && echo same || echo diff)"
+eq "默认模式已写入" "$(cat "$INST/sdcard/Android/yc/uperf/cur_powermode.txt")" balance
+eq "安装后移除平台配置目录" "no" "$([ -d "$INST/mod/config" ] && echo yes || echo no)"
+has "安装提示包含 WebUI 指引" "$OUT" "打开 WebUI"
+
+printf '\n'
+make_install "$INST" sun arm64-v8a "$INST/mod"
+run_install
+eq "映射名缺配置时回落到模板" "same" "$(cmp -s "$INST/sdcard/Android/yc/uperf/uperf.json" "$MODULE/config/template.json" && echo same || echo diff)"
+eq "回落时记录 template" "$(cat "$INST/data/adb/nanhe_ovo/device_config.txt")" template
+has "回落时有提示" "$OUT" "通用模板"
+
+printf '\n'
+make_install "$INST" nosuch arm64-v8a "$INST/mod"
+run_install
+eq "未知平台回落到模板" "same" "$(cmp -s "$INST/sdcard/Android/yc/uperf/uperf.json" "$MODULE/config/template.json" && echo same || echo diff)"
+
+printf '\n'
+make_install "$INST" gs201 armeabi-v7a "$INST/mod"
+run_install
+[ "$RC" != 0 ] && ok "非 arm64 拒绝安装" || bad "非 arm64 被接受"
+has "提示需要 arm64" "$OUT" "需要 arm64"
+
+printf '\n'
+make_install "$INST" gs201 arm64-v8a "$INST/mod"
+mkdir -p "$INST/sdcard/Android/yc/uperf"
+printf '%s\n' old-config > "$INST/sdcard/Android/yc/uperf/uperf.json"
+run_install
+eq "升级时保留旧配置备份" "old-config" "$(cat "$INST/sdcard/Android/yc/uperf/uperf.json.bak")"
+
+printf '\n'
+make_install "$INST" gs201 arm64-v8a "$INST/mod"
+rm -f "$INST/mod/bin/uperf"
+run_install
+[ "$RC" != 0 ] && ok "缺少 uperf 二进制时拒绝安装" || bad "缺二进制仍安装"
+has "提示安装包不完整" "$OUT" "安装包不完整"
+
+printf '\n'
+make_install "$INST" gs201 arm64-v8a "$INST/mod"
+rm -f "$INST/mod/webroot/index.html"
+run_install
+[ "$RC" != 0 ] && ok "缺少 WebUI 时拒绝安装" || bad "缺 WebUI 仍安装"
+
+# 真机场景：KernelSU / APatch 解包不还原 zip 里的可执行位，文件以 0644 落盘
+printf '\n'
+make_install "$INST" gs201 arm64-v8a "$INST/mod"
+find "$INST/mod" -type f -exec chmod 0644 {} \;
+run_install
+eq "解包丢失可执行位仍安装成功" "$RC" 0
+eq "安装后引擎恢复 0755" "755" "$(stat -c %a "$INST/mod/bin/uperf")"
+eq "安装后 busybox 可执行" "yes" "$([ -x "$INST/mod/bin/busybox/busybox" ] && echo yes || echo no)"
+eq "安装后后端脚本可执行" "yes" "$([ -x "$INST/mod/script/control.sh" ] && echo yes || echo no)"
+hasnt "权限缺失不再误报缺少引擎" "$OUT" "缺少 bin/uperf"
+
+printf '\n'
+make_install "$INST" gs201 arm64-v8a "$INST/mod"
+: >"$INST/mod/bin/uperf"
+run_install
+[ "$RC" != 0 ] && ok "空引擎文件被拒绝" || bad "空引擎仍安装"
+has "提示引擎为空文件" "$OUT" "为空文件"
+
+printf '\n'
+make_install "$INST" gs201 arm64-v8a "$INST/mod"
+mkdir -p "$INST/data/adb/modules/nanhe_ovo/bin"
+cp -a "$MODULE/bin/uperf" "$INST/data/adb/modules/nanhe_ovo/bin/uperf"
+rm -f "$INST/mod/bin/uperf"
+run_install
+eq "解包丢引擎时从旧安装自愈" "$RC" 0
+has "自愈有提示" "$OUT" "已从旧安装恢复"
+
+printf '\n'
+make_install "$INST" gs201 arm64-v8a "$INST/mod"
+rm -f "$INST/mod/bin/uperf"
+python3 -c 'import os,sys,zipfile
+root,out=sys.argv[1],sys.argv[2]
+z=zipfile.ZipFile(out,"w",zipfile.ZIP_DEFLATED)
+for d,_,fs in os.walk(root):
+    for f in fs:
+        p=os.path.join(d,f)
+        z.write(p, os.path.relpath(p,root))
+z.close()' "$MODULE" "$WORK/pkg.zip"
+OUT=$(PATH="$INST/bin:$PATH" MODPATH="$INST/mod" ZIPFILE="$WORK/pkg.zip" "$SH" "$INST/mod/customize.sh" 2>&1); RC=$?
+eq "解包丢引擎时能从 ZIPFILE 自愈" "$RC" 0
+has "重新解包有提示" "$OUT" "从 zip 重新解出"
+eq "自愈后引擎可执行" "yes" "$([ -x "$INST/mod/bin/uperf" ] && echo yes || echo no)"
+
+########################################
+# 4. 运行日志
+########################################
+printf '\n== 运行日志 ==\n'
+run_ctl clearlog
+eq "清空日志退出 0" "$RC" 0
+eq "清空后日志文件已删除" "no" "$([ -e "$RR/log.txt" ] && echo yes || echo no)"
+run_ctl logs
+eq "空日志只返回 ok" "ok	logs" "$OUT"
+
+run_ctl logline info page '页面开始记录'
+eq "写日志退出 0" "$RC" 0
+eq "写日志返回 ok" "ok	logline" "$OUT"
+has "日志文件包含正文" "$(cat "$RR/log.txt")" "页面开始记录"
+eq "日志级别为 info" "info" "$(awk -F'\t' 'END{print $2}' "$RR/log.txt")"
+eq "日志标签为 page" "page" "$(awk -F'\t' 'END{print $3}' "$RR/log.txt")"
+
+run_ctl logline error refresh '峰值写入失败'
+eq "error 级别被接受" "error" "$(awk -F'\t' 'END{print $2}' "$RR/log.txt")"
+
+run_ctl logline silly page 'x'
+[ "$RC" != 0 ] && ok "非法日志级别被拒绝" || bad "接受了非法日志级别"
+has "非法级别有提示" "$ERR" "invalid log level"
+run_ctl logline info 'bad tag' x
+[ "$RC" != 0 ] && ok "非法日志标签被拒绝" || bad "接受了非法日志标签"
+has "非法标签有提示" "$ERR" "invalid log tag"
+run_ctl logline info page ''
+[ "$RC" != 0 ] && ok "空日志正文被拒绝" || bad "接受了空日志正文"
+
+LONG=$(awk 'BEGIN{for(i=0;i<260;i++) printf "x"}')
+run_ctl logline warn page "$LONG"
+eq "超长正文截到 200 字" "200" "$(awk -F'\t' 'END{print length($4)}' "$RR/log.txt")"
+
+# 日志文件是符号链接时既不写也不清空
+mv "$RR/log.txt" "$WORK/log-real"
+ln -s "$WORK/log-real" "$RR/log.txt"
+run_ctl logs
+[ "$RC" != 0 ] && ok "日志为符号链接时拒绝读取" || bad "读取了符号链接日志"
+has "符号链接提示" "$ERR" "log file symlink refused"
+run_ctl logline info page '不该写进去'
+[ "$RC" = 0 ] && ok "符号链接时不写日志（静默跳过）" || bad "符号链接写入返回非 0"
+hasnt "符号链接目标未被写入" "$(cat "$WORK/log-real")" "不该写进去"
+run_ctl clearlog
+[ "$RC" != 0 ] && ok "日志为符号链接时拒绝清空" || bad "清空了符号链接日志"
+rm -f "$RR/log.txt"
+mv "$WORK/log-real" "$RR/log.txt"
+
+# 超过 200 行自动裁掉最早的
+awk 'BEGIN{for(i=1;i<=205;i++) printf "2026-11-16 00:00:00\tinfo\told\t第 %d 条\n", i}' >> "$RR/log.txt"
+run_ctl logline info page '触发裁剪'
+eq "日志裁剪到 200 行" "200" "$(wc -l < "$RR/log.txt" | tr -d ' ')"
+hasnt "最早的行已被裁掉" "$(cat "$RR/log.txt")" "第 1 条"
+has "最新一行仍在" "$(cat "$RR/log.txt")" "触发裁剪"
+
+# 读到异常状态时自动记录，且同一开机只记一次
+run_ctl clearlog
+: > "$FAKE/dumpsys_silent"
+run_ctl status
+has "读不到档位表时自动记日志" "$(cat "$RR/log.txt")" "未读到刷新率档位表"
+run_ctl status
+eq "同一问题不随轮询刷屏" "1" "$(grep -c '未读到刷新率档位表' "$RR/log.txt")"
+# 读不到档位表时写入会放行，但也记一条 info
+run_ctl refresh 90 on
+eq "无档位表时 90Hz 放行" "$RC" 0
+has "放行时记下 info" "$(cat "$RR/log.txt")" "未读到档位表，已放行 90Hz"
+rm -f "$FAKE/dumpsys_silent"
+# 有档位表时未声明档位被拒绝，命令失败自动记一条 error
+run_ctl refresh 90 on
+[ "$RC" != 0 ] && ok "未声明档位仍被拒绝" || bad "接受了未声明的 90Hz"
+eq "命令失败记为 error" "error" "$(awk -F'\t' 'END{print $2}' "$RR/log.txt")"
+has "错误原文进了日志" "$(cat "$RR/log.txt")" "90 Hz is not supported by this device"
+
+# 开机脚本把刷新率动作写进同一份日志
+has "refresh_apply 也写日志文件" "$(cat "$MODULE/script/refresh_apply.sh")" '>> "$RROOT/log.txt"'
+
+########################################
+# 汇总
+########################################
+printf '\n'
+if [ "$F" = 0 ]; then echo "RESULT: 全部通过"; else echo "RESULT: 存在失败项"; fi
+exit "$F"

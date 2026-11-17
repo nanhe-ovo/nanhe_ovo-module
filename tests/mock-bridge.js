@@ -5,7 +5,7 @@
     'info\tboot_id\tpreview-boot-0000',
     'info\tbaseline\t可用',
     'info\tconfig\t/sdcard/Android/yc/uperf/uperf.json',
-    'info\tversion\tv1.3.2',
+    'info\tversion\tv1.4.0',
     'info\tdevice_config\tmtd9400',
     'info\ttune\t开启',
     'info\tmode\tbalance',

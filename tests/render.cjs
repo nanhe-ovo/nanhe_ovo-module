@@ -198,7 +198,7 @@ class Cdp {
       '应用规则行 >= 3': checks.appRows >= 3,
       '调优开关已打开': checks.tune === 'true',
       '设备信息 >= 7 条': checks.infoRows >= 7,
-      '版本号来自后端': checks.version === 'v1.3.2',
+      '版本号来自后端': checks.version === 'v1.4.0',
       '关于页有运行日志（>= 3 条）': checks.logRows >= 3 && checks.logInPage === true,
       '日志保留级别标签（注意 / 异常）': checks.logLevels.indexOf('注意') >= 0 && checks.logLevels.indexOf('异常') >= 0,
       '日志数量与后端一致': checks.logCount.indexOf('3 条') >= 0 && checks.logsApi === 3,

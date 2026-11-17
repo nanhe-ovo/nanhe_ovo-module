@@ -182,6 +182,13 @@ run_ctl mode
 [ "$RC" != 0 ] && ok "缺少参数被拒绝" || bad "缺少参数被接受"
 run_ctl mode crazy extra
 [ "$RC" != 0 ] && ok "参数过多被拒绝" || bad "参数过多被接受"
+run_ctl mode crazy
+eq "超频模式写入成功" "$RC" 0
+eq "超频模式已落盘" "$(cat "$UP/cur_powermode.txt")" crazy
+has "超频尝试已记日志" "$(cat "$RR/log.txt" 2>/dev/null)" "超频模式"
+run_ctl mode balance
+eq "退出超频模式成功" "$RC" 0
+eq "退出后模式已恢复" "$(cat "$UP/cur_powermode.txt")" balance
 
 printf '\n== 分应用规则 ==\n'
 run_ctl rule com.example.game fast
@@ -650,6 +657,27 @@ has "错误原文进了日志" "$(cat "$RR/log.txt")" "90 Hz is not supported by
 
 # 开机脚本把刷新率动作写进同一份日志
 has "refresh_apply 也写日志文件" "$(cat "$MODULE/script/refresh_apply.sh")" '>> "$RROOT/log.txt"'
+
+printf '\n== 平台配置完整性（v1.4.0 全平台 crazy + 2026 新平台）==\n'
+CONFIG_DIR="$MODULE/config"
+[ -f "$CONFIG_DIR/mtd9600pro.json" ] && ok "mtd9600pro 配置存在" || bad "缺少 mtd9600pro.json"
+has "9600 Pro 含 4.55GHz 模型点" "$(cat "$CONFIG_DIR/mtd9600pro.json")" "4.55"
+[ -f "$CONFIG_DIR/mtd9600m.json" ] && ok "mtd9600m 配置存在" || bad "缺少 mtd9600m.json"
+[ -f "$CONFIG_DIR/mtd9500s.json" ] && ok "mtd9500s 配置存在" || bad "缺少 mtd9500s.json"
+[ -f "$CONFIG_DIR/mtd8500.json" ] && ok "mtd8500 配置存在" || bad "缺少 mtd8500.json"
+has "8500 为 8 核单簇" "$(cat "$CONFIG_DIR/mtd8500.json")" '"nr": 8'
+[ -f "$CONFIG_DIR/sdm8e6.json" ] && ok "sdm8e6 配置存在" || bad "缺少 sdm8e6.json"
+has "8E6 含 5.0GHz 模型点" "$(cat "$CONFIG_DIR/sdm8e6.json")" "5.0"
+[ -f "$CONFIG_DIR/sdm8e6x.json" ] && ok "sdm8e6x 配置存在" || bad "缺少 sdm8e6x.json"
+has "8E6x 含 5.01GHz 模型点" "$(cat "$CONFIG_DIR/sdm8e6x.json")" "5.01"
+[ -f "$CONFIG_DIR/exynos2700.json" ] && ok "exynos2700 配置存在" || bad "缺少 exynos2700.json"
+CRAZY_MISS=0
+for cf in "$CONFIG_DIR"/*.json; do
+    [ "$(basename "$cf")" = sdm210.json ] && continue
+    grep -q '"crazy"' "$cf" || CRAZY_MISS=1
+done
+[ "$CRAZY_MISS" = 0 ] && ok "全部平台配置均含 crazy 超频模式" || bad "存在缺少 crazy 的配置"
+has "mtd9400 超频档 DDR 保底 6.4G" "$(cat "$CONFIG_DIR/mtd9400.json")" "6400000000"
 
 ########################################
 # 汇总

@@ -403,10 +403,53 @@ cmd_rule() {
     commit_text "$RULES" "$WORK/text.new" || return 1
     printf 'ok\trule\t%s\t%s\n' "$1" "$2"
 }
+# 超频模式（crazy）：把每个可写 CPU 集群的上限推到频率表最高档。
+# 只写上限、单台独立尝试；失败按原因分类记日志并跳过，不中断模式切换。
+apply_crazy_boost() {
+    discover
+    BOOSTED=0
+    while IFS="$(printf '\t')" read -r BL_ID BL_PATH BL_LABEL BL_UNIT; do
+        case "$BL_ID" in cpu-*) ;; *) continue;; esac
+        nodes_for "$BL_ID" || continue
+        BL_TABLE=$(freq_table "$BL_PATH/scaling_available_frequencies")
+        [ -n "$BL_TABLE" ] || continue
+        BL_TARGET=${BL_TABLE##* }
+        is_freq "$BL_TARGET" || continue
+        BL_NOW=$(read_num "$BL_PATH/$MAX_NODE") || continue
+        is_freq "$BL_NOW" || continue
+        [ "$BL_NOW" = "$BL_TARGET" ] && continue
+        if printf '%s\n' "$BL_TARGET" > "$BL_PATH/$MAX_NODE" 2>"$WORK/boost.err"; then
+            BL_READ=$(read_num "$BL_PATH/$MAX_NODE") || BL_READ=
+            if [ "$BL_READ" = "$BL_TARGET" ]; then
+                log_write info boost "$BL_ID: 上限 $BL_NOW → $BL_TARGET（表内最高档，不超出厂上限）"
+                BOOSTED=$((BOOSTED + 1))
+            else
+                log_write warn boost "$BL_ID: 写入后回读不符（当前 $BL_READ），已跳过"
+            fi
+        else
+            BL_MSG=$(log_sane "$(sed 's/^[^:]*: *//' "$WORK/boost.err" | head -n 1)")
+            case "$BL_MSG" in
+                *"Permission denied"*) log_write warn boost "$BL_ID: 上限节点被内核/SELinux 设为只读，无法推高（已跳过）";;
+                *"No such file"*|*"not exist"*) log_write warn boost "$BL_ID: 频率节点不存在，已跳过";;
+                *) log_write warn boost "$BL_ID: 写上限失败（$BL_MSG），已跳过";;
+            esac
+        fi
+    done < "$WORK/devices"
+    log_write info boost "超频模式：已尝试推高 $BOOSTED 个集群上限到表内最高档，其余按日志跳过"
+    return 0
+}
 cmd_mode() {
     config_has_mode "$1" || { err 'mode absent from local uperf.json presets'; return 1; }
+    CM_PREV=$(cat "$UPERF/cur_powermode.txt" 2>/dev/null)
+    valid_mode "$CM_PREV" || CM_PREV=
     printf '%s\n' "$1" > "$WORK/text.new" || return 1
     commit_text "$UPERF/cur_powermode.txt" "$WORK/text.new" || return 1
+    if [ "$1" = crazy ]; then
+        apply_crazy_boost || :
+    elif [ "$CM_PREV" = crazy ]; then
+        # 离开超频模式：恢复本次开机的频率基线（无基线则无事可做）
+        [ -f "$BASELINE" ] && cmd_restore || :
+    fi
     printf 'ok\tmode\t%s\n' "$1"
 }
 cmd_tune() {

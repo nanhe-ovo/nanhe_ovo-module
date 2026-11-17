@@ -8,7 +8,7 @@
     balance: ['均衡', '日常刚刚好'],
     performance: ['性能', '流畅优先'],
     fast: ['极速', '高负载场景'],
-    crazy: ['疯狂', '只建议带散热'],
+    crazy: ['超频', '表内最高频+极限调度'],
   };
   // 静态内联 SVG，不随外部数据变化。
   const ICONS = {
@@ -16,6 +16,7 @@
     balance: '<path d="M3.5 8.5h17"/><path d="M3.5 15.5h17"/><circle cx="9" cy="8.5" r="2.1"/><circle cx="15" cy="15.5" r="2.1"/>',
     performance: '<path d="M13 3l-7 10h5l-2 8 7-10h-5z"/>',
     fast: '<path d="M6 18L18 6"/><path d="M10 6h8v8"/>',
+    crazy: '<path d="M13 2L4.5 13.5H11L9.5 22 19 10h-6.5z"/>',
     default: '<path d="M12 4l7 8-7 8-7-8z"/>',
   };
   const SVG_HEAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">';
@@ -33,7 +34,7 @@
     'info\tdevice_config\ttemplate',
     'info\ttune\t开启',
     'info\tmode\tbalance',
-    'info\tmodes\tpowersave balance performance fast',
+    'info\tmodes\tpowersave balance performance fast crazy',
     'info\tuperf\t未运行',
     'info\trefresh\t120',
     'info\trefresh_target\t120',
@@ -294,7 +295,12 @@
       const icon = el('span', 'mode-icon');
       icon.innerHTML = SVG_HEAD + (ICONS[mode] || ICONS.default) + '</svg>';
       button.append(icon, el('span', 'mode-name', info[0]), el('span', 'mode-desc', info[1]));
-      button.addEventListener('click', () => mutate('切换为' + info[0] + '模式？', '将立即调用后端设置全局模式：' + mode + '。', 'mode', [mode]));
+      button.addEventListener('click', () => {
+        const extra = mode === 'crazy'
+          ? '\n\n超频模式会把可写的 CPU 集群上限推到频率表最高档（表内最高，不超出厂上限，仍受内核/温控限制）；离开该模式会自动恢复本次开机的频率基线。'
+          : '';
+        mutate('切换为' + info[0] + '模式？', '将立即调用后端设置全局模式：' + mode + '。' + extra, 'mode', [mode]);
+      });
       grid.append(button);
     });
     if (!modes.length) grid.append(el('p', 'empty', '后端没有报告可用的性能模式，请检查 uperf.json。'));

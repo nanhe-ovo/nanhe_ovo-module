@@ -6,7 +6,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
   const CONTROL = '/data/adb/modules/nanhe_ovo/script/control.sh';
-  const FALLBACK_MODES = ['powersave', 'balance', 'performance', 'fast'];
+  const FALLBACK_MODES = ['powersave', 'balance', 'performance', 'fast', 'crazy'];
   let sequence = 0;
 
   function quote(value) { return "'" + String(value).replace(/'/g, "'\\''") + "'"; }

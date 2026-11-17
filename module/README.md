@@ -3,14 +3,14 @@
 基于 [Uperf-Game-Turbo](https://github.com/yinwanxi/Uperf-Game-Turbo) 的性能调度模块（Magisk / KernelSU / APatch 通用可刷入 zip），内置一套 Miuix 观感的本地 WebUI（绿色「工作中」状态卡、纯白大圆角卡、底部悬浮液态玻璃胶囊导航）：切换全局性能模式、为单个应用绑定调度策略、直接控制 CPU / GPU 频率区间、调节屏幕刷新率，关于页展示机型与系统信息，并带一份自动记录的运行日志。
 
 - 模块 ID：`nanhe_ovo`
-- 版本：`v1.3.2`（versionCode `20261122`）
+- 版本：`v1.4.0`（versionCode `20261117`）
 - 引擎：uperf（来自 Uperf-Game-Turbo，Apache-2.0）
 - WebUI：纯本地 HTML/CSS/JS，无远程资源，不联网
 
 ## 安装
 
 1. 确认设备为 **arm64**（模块内置的 uperf 与 busybox 只有 aarch64 版本）。
-2. 在管理器里刷入 `nanhe_ovo-v1.3.2-20261122.zip`：Magisk → 模块 → 从本地安装；KernelSU / APatch → 模块 → 安装。
+2. 在管理器里刷入 `nanhe_ovo-v1.4.0-20261117.zip`：Magisk → 模块 → 从本地安装；KernelSU / APatch → 模块 → 安装。
 3. 重启。
 4. 打开面板：KernelSU / APatch 管理器 → 模块 → 南何ovo → 打开 WebUI。
    Magisk 本体没有模块 WebUI，可用 KsuWebUIStandalone 等工具打开 `/data/adb/modules/nanhe_ovo/webroot/index.html`。
@@ -169,6 +169,9 @@ nanhe_ovo/
 - `initsvc.sh` 增加系统调优开关与 `/data/powercfg.sh` 占用保护；
 - 新增 `script/refresh_apply.sh`（开机刷新率应用），`control.sh` 增加 `refresh` / `deviceinfo` 命令；
 - 面板增加刷新率档位、强制取消静止降频开关与机型信息卡片；
+- v1.4.0 全部 75 份平台配置补齐 `crazy`（超频）preset：999 功耗上限 + margin/burst 1.0 + 关闭低效频点限制；面板第五档「超频」切换时把可写 CPU 集群上限推到频率表最高档（不超出厂上限），只读节点分类记日志跳过，离开自动恢复开机基线；
+- v1.4.0 新增 7 份 2026 平台推测配置（`mtd9600pro`/`mtd9600m`/`mtd9500s`/`mtd8500`/`sdm8e6`/`sdm8e6x`/`exynos2700`），功耗模型按 Uperf 方法论推算，板级代号未公开前不参与自动匹配；
+- v1.4.0 原理与策略文档随包携带：`docs/Uperf运行原理.md`、`docs/uperf全平台调度策略.md`、`docs/降频分析与v1.3.2优化.md`；
 - v1.3.2 新增 `config/mtd9400.json`（Dimensity 9400 / mt6991）：补上 4+3+1 三段功耗模型与 DDR 保底，修复该平台回退 `template.json` 后 uperf 不接管频率、CPU/DDR 频繁升降频的锯齿；
 - v1.3.2 回退模板时写入 `warn config` 日志，面板运行日志可直接看到「uperf 不会接管 CPU 频率」；
 - v1.3.1 首页改为左右分栏（状态卡 + 两枚统计卡），运行状态改成竖排「标签 / 值」；状态标签自动显示 Root 方案（LKM / GKI / APatch / Magisk）；

@@ -3,14 +3,14 @@
 基于 [Uperf-Game-Turbo](https://github.com/yinwanxi/Uperf-Game-Turbo) 的性能调度模块（Magisk / KernelSU / APatch 通用可刷入 zip），内置一套 Miuix 观感的本地 WebUI（绿色「工作中」状态卡、纯白大圆角卡、底部悬浮液态玻璃胶囊导航）：切换全局性能模式、为单个应用绑定调度策略、直接控制 CPU / GPU 频率区间、调节屏幕刷新率，关于页展示机型与系统信息，并带一份自动记录的运行日志。
 
 - 模块 ID：`nanhe_ovo`
-- 版本：`v1.4.0`（versionCode `20261117`）
+- 版本：`v1.5.0`（versionCode `20261118`）
 - 引擎：uperf（来自 Uperf-Game-Turbo，Apache-2.0）
 - WebUI：纯本地 HTML/CSS/JS，无远程资源，不联网
 
 ## 安装
 
 1. 确认设备为 **arm64**（模块内置的 uperf 与 busybox 只有 aarch64 版本）。
-2. 在管理器里刷入 `nanhe_ovo-v1.4.0-20261117.zip`：Magisk → 模块 → 从本地安装；KernelSU / APatch → 模块 → 安装。
+2. 在管理器里刷入 `nanhe_ovo-v1.5.0-20261118.zip`：Magisk → 模块 → 从本地安装；KernelSU / APatch → 模块 → 安装。
 3. 重启。
 4. 打开面板：KernelSU / APatch 管理器 → 模块 → 南何ovo → 打开 WebUI。
    Magisk 本体没有模块 WebUI，可用 KsuWebUIStandalone 等工具打开 `/data/adb/modules/nanhe_ovo/webroot/index.html`。
@@ -145,7 +145,7 @@ nanhe_ovo/
 ├── system.prop              引擎需要的属性
 ├── bin/uperf                uperf 引擎（aarch64）
 ├── bin/busybox/busybox      busybox（aarch64）
-├── config/*.json            66 个平台配置 + template.json
+├── config/*.json            97 个平台配置 + template.json
 ├── script/
 │   ├── control.sh           WebUI 后端（status/freq/rule/mode/restore/tune/refresh/deviceinfo）
 │   ├── refresh_apply.sh     开机应用刷新率（等开机完成、补写三次、失败不影响开机）
@@ -171,6 +171,10 @@ nanhe_ovo/
 - 面板增加刷新率档位、强制取消静止降频开关与机型信息卡片；
 - v1.4.0 全部 75 份平台配置补齐 `crazy`（超频）preset：999 功耗上限 + margin/burst 1.0 + 关闭低效频点限制；面板第五档「超频」切换时把可写 CPU 集群上限推到频率表最高档（不超出厂上限），只读节点分类记日志跳过，离开自动恢复开机基线；
 - v1.4.0 新增 7 份 2026 平台推测配置（`mtd9600pro`/`mtd9600m`/`mtd9500s`/`mtd8500`/`sdm8e6`/`sdm8e6x`/`exynos2700`），功耗模型按 Uperf 方法论推算，板级代号未公开前不参与自动匹配；
+- v1.5.0 补齐 23 份 2020 年以来存量平台推测配置（骁龙 / 天玑 / Exynos / 麒麟 / Tensor / 展锐），覆盖天玑 6100+/7050/1100/9300/7050/8400、麒麟 990/9000/9000S/9010/9020、Exynos 1080/1480/1580/2400、Tensor G4、骁龙 8s Gen3 / 8 Elite / 7+ Gen2 / 6 Gen1、展锐 T310 / SC9832E 等；全部标注「非官方调参表，需真机校准」，既有上游配置原样保留未改动；
+- v1.5.0 平台映射补入 sun/sm8755（8 Elite）、sm7475（7+ Gen2）、sm8635（8s Gen3）、sm6450（6 Gen1）、universal1480/1580/2400、kirin9000s/9010/9020、mt6899（D8400）；
+- v1.5.0 推测配置按大核规格分三档落静态调度（旗舰 4/8/12·m0.18、中端 3/6/10·m0.25、入门 2/4/6·m0.20），标尺对齐既有旗舰/入门件；五模式 presets 沿用模板场景覆盖；
+- v1.5.0 修复上游遗留 `sdm210.json` 数组缺闭合括号导致无法解析的问题，并补齐该件缺失的 `crazy` 超频模式；全量配置纳入 JSON 可解析校验；
 - v1.4.0 原理与策略文档随包携带：`docs/Uperf运行原理.md`、`docs/uperf全平台调度策略.md`、`docs/降频分析与v1.3.2优化.md`；
 - v1.3.2 新增 `config/mtd9400.json`（Dimensity 9400 / mt6991）：补上 4+3+1 三段功耗模型与 DDR 保底，修复该平台回退 `template.json` 后 uperf 不接管频率、CPU/DDR 频繁升降频的锯齿；
 - v1.3.2 回退模板时写入 `warn config` 日志，面板运行日志可直接看到「uperf 不会接管 CPU 频率」；

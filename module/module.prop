@@ -1,6 +1,6 @@
 id=nanhe_ovo
 name=南何ovo
-version=v1.4.0
-versionCode=20261117
+version=v1.5.0
+versionCode=20261118
 author=南何ovo
 description=基于 Uperf-Game-Turbo 的性能调度模块：Miuix 观感 WebUI（绿色「工作中」状态卡、纯白大圆角卡、悬浮液态玻璃底栏），五种全局性能模式（省电/均衡/性能/极速/超频，超频模式推高可写集群上限到表内最高档）、为单个应用绑定调度策略、控制 CPU/GPU 频率区间、调节屏幕刷新率（含强制取消静止降频），关于页展示机型与系统信息并内置运行日志（失败与异常自动记录）；首页自动读取 Root 方案（KernelSU LKM / GKI、APatch、Magisk），状态页同时报告 SUSFS 内核模块是否加载。需要 KernelSU/APatch 等支持模块 WebUI 的管理器，重启生效。

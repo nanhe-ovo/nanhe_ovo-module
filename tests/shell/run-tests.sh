@@ -503,7 +503,7 @@ eq "D9400 配置名已记录" "$(cat "$INST/data/adb/nanhe_ovo/device_config.txt
 has "D9400 配置含功耗模型" "$(cat "$MODULE/config/mtd9400.json")" '"typicalFreq": 3.63'
 
 printf '\n'
-make_install "$INST" sun arm64-v8a "$INST/mod"
+make_install "$INST" mt8175 arm64-v8a "$INST/mod"
 run_install
 eq "映射名缺配置时回落到模板" "same" "$(cmp -s "$INST/sdcard/Android/yc/uperf/uperf.json" "$MODULE/config/template.json" && echo same || echo diff)"
 eq "回落时记录 template" "$(cat "$INST/data/adb/nanhe_ovo/device_config.txt")" template
@@ -671,12 +671,35 @@ has "8E6 含 5.0GHz 模型点" "$(cat "$CONFIG_DIR/sdm8e6.json")" "5.0"
 [ -f "$CONFIG_DIR/sdm8e6x.json" ] && ok "sdm8e6x 配置存在" || bad "缺少 sdm8e6x.json"
 has "8E6x 含 5.01GHz 模型点" "$(cat "$CONFIG_DIR/sdm8e6x.json")" "5.01"
 [ -f "$CONFIG_DIR/exynos2700.json" ] && ok "exynos2700 配置存在" || bad "缺少 exynos2700.json"
+[ -f "$CONFIG_DIR/e2400.json" ] && ok "e2400 配置存在" || bad "缺少 e2400.json"
+has "2400 大核簇 5 核" "$(cat "$CONFIG_DIR/e2400.json")" '"nr": 5'
+[ -f "$CONFIG_DIR/sdm8elite.json" ] && ok "sdm8elite 配置存在" || bad "缺少 sdm8elite.json"
+has "8 Elite 含 4.32GHz 模型点" "$(cat "$CONFIG_DIR/sdm8elite.json")" "4.32"
+[ -f "$CONFIG_DIR/mtd9300.json" ] && ok "mtd9300 配置存在" || bad "缺少 mtd9300.json"
+has "9300 含 3.25GHz 模型点" "$(cat "$CONFIG_DIR/mtd9300.json")" "3.25"
+[ -f "$CONFIG_DIR/kirin9020.json" ] && ok "kirin9020 配置存在" || bad "缺少 kirin9020.json"
+has "9020 含 2.5GHz 模型点" "$(cat "$CONFIG_DIR/kirin9020.json")" "2.5"
+[ -f "$CONFIG_DIR/gs401.json" ] && ok "gs401 配置存在" || bad "缺少 gs401.json"
+has "Tensor G4 含 3.1GHz 模型点" "$(cat "$CONFIG_DIR/gs401.json")" "3.1"
+[ -f "$CONFIG_DIR/sp9832.json" ] && ok "sp9832 配置存在" || bad "缺少 sp9832.json"
+has "9832 为 8 核单簇" "$(cat "$CONFIG_DIR/sp9832.json")" '"nr": 8'
+[ -f "$CONFIG_DIR/mtd8400.json" ] && ok "mtd8400 配置存在" || bad "缺少 mtd8400.json"
 CRAZY_MISS=0
 for cf in "$CONFIG_DIR"/*.json; do
-    [ "$(basename "$cf")" = sdm210.json ] && continue
     grep -q '"crazy"' "$cf" || CRAZY_MISS=1
 done
 [ "$CRAZY_MISS" = 0 ] && ok "全部平台配置均含 crazy 超频模式" || bad "存在缺少 crazy 的配置"
+if python3 -c '
+import json,glob,sys
+bad=[]
+for f in glob.glob(sys.argv[1]+"/*.json"):
+    try: json.load(open(f,encoding="utf-8"))
+    except Exception: bad.append(f)
+sys.exit(1 if bad else 0)' "$CONFIG_DIR"; then
+    ok "全部平台配置 JSON 可解析"
+else
+    bad "存在无法解析的配置 JSON"
+fi
 has "mtd9400 超频档 DDR 保底 6.4G" "$(cat "$CONFIG_DIR/mtd9400.json")" "6400000000"
 
 ########################################

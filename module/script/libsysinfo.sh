@@ -140,8 +140,13 @@ get_config_name() {
     "taro") echo "$(_get_taro_type)" ;;
     "lahaina") echo "$(_get_lahaina_type)" ;;
     "shima") echo "$(_get_lahaina_type)" ;;
-    "yupik") echo "$(_get_lahaina_type)" ;;
-    "sun") echo "sdm8g4" ;;
+    "yupik") echo "sdm7g2p" ;;
+    "sm7475") echo "sdm7g2p" ;;
+    "sun") echo "sdm8elite" ;;
+    "sm8755") echo "sdm8elite" ;;
+    "manila") echo "sdm8sgen3" ;;
+    "sm8635") echo "sdm8sgen3" ;;
+    "sm6450") echo "sdm6g1" ;;
     "kona") echo "sdm865" ;;    # 865, 870
     "msmnile") echo "sdm855" ;; # 855, 860
     "sdm845") echo "sdm845" ;;
@@ -176,6 +181,9 @@ get_config_name() {
     "exynos1080") echo "e1080" ;;
     "exynos990") echo "e990" ;;
     "universal1080") echo "e1080" ;;
+    "universal1480") echo "e1480" ;;
+    "universal1580") echo "e1580" ;;
+    "universal2400") echo "e2400" ;;
     "universal990") echo "e990" ;;
     "universal5420") echo "e5420" ;;
     "universal9825") echo "e9820" ;;
@@ -216,6 +224,7 @@ get_config_name() {
     "mt6983") echo "mtd9000" ;;
     "mt6985") echo "mtd9200" ;;
     "mt6989") echo "mtd9300" ;;
+    "mt6899") echo "mtd8400" ;;
     "mt6991") echo "mtd9400" ;;
     "gs101") echo "gs101" ;;
     "gs201") echo "gs201" ;;
@@ -261,6 +270,9 @@ get_config_name() {
     "TAH-AN00m") echo "kirin990" ;;
     "kirin9000") echo "kirin9000" ;;
     "JAD") echo "kirin9000" ;;
+    "kirin9000s") echo "kirin9000s" ;;
+    "kirin9010") echo "kirin9010" ;;
+    "kirin9020") echo "kirin9020" ;;
     "hi3650") echo "kirin955" ;;
     "FRD") echo "kirin955" ;;
     "EVA-TL00") echo "kirin955" ;;

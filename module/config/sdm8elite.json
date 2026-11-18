@@ -68,7 +68,7 @@
             }
         },
         "sched": {
-            "enable": false,
+            "enable": true,
             "cpumask": {
                 "all": [
                     0,
@@ -82,15 +82,13 @@
                 ],
                 "c0": [
                     0,
-                    1,
+                    1
+                ],
+                "c1": [
                     2,
                     3,
                     4,
                     5
-                ],
-                "c1": [
-                    6,
-                    7
                 ],
                 "c2": [
                     6,
@@ -113,7 +111,7 @@
                     "boost": "all"
                 },
                 "bg": {
-                    "bg": "",
+                    "bg": "c0",
                     "fg": "c0",
                     "idle": "c0",
                     "touch": "c0",
@@ -369,6 +367,11 @@
                             "pc": "auto"
                         },
                         {
+                            "k": "^(AudioTrack|AudioThread|AudioOut|FastMixer|C2|Codec|MediaCodec|NDK Media|RHIAux|RHIAsync|NetThread|NetworkThread)",
+                            "ac": "bg",
+                            "pc": "coop"
+                        },
+                        {
                             "k": "^(Unity|Worker Thread|TaskGraph|RHIThread|GLThread|Thread-|Job.Worker)",
                             "ac": "gtcoop",
                             "pc": "auto"
@@ -441,9 +444,9 @@
         "sysfs": {
             "cpusetTa": "0-7",
             "cpusetFg": "0-7",
-            "cpusetBg": "0-3",
-            "cpusetSysBg": "0-3",
-            "cpusetRe": "0-6"
+            "cpusetBg": "0-1",
+            "cpusetSysBg": "0-1",
+            "cpusetRe": "0-1"
         },
         "sched": {
             "scene": "idle"

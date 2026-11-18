@@ -56,7 +56,8 @@ if [ "$(is_mtk)" = "true" ]; then
         done
         lock_val "1 1 1" /proc/gpufreqv2/limit_table
         lock_val "3 1 1" /proc/gpufreqv2/limit_table
-        lock_val "0" /sys/kernel/ged/hal/fastdvfs_mode
+        # 保留 fast DVFS；v1.5.0 将其关闭会增加 GPU 频率调整延迟，加剧锯齿。
+        # 不再写 /sys/kernel/ged/hal/fastdvfs_mode，由 gpufreq 按负载快速响应。
     else
         # Disabel auto voltage scaling by MTK
         lock_val "0" /proc/gpufreq/gpufreq_aging_enable

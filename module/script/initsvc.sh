@@ -46,3 +46,7 @@ else
 fi
 
 uperf_start
+
+# MTK Mali 按当前模式设置真实 OPP 表内的 GPU 下限与降频迟滞。
+GP_MODE=$(cat "$USER_PATH/cur_powermode.txt" 2>/dev/null)
+sh "$SCRIPT_PATH/gpu_profile.sh" "$GP_MODE"

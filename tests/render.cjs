@@ -188,7 +188,7 @@ class Cdp {
       '不支持的 7 个档位置灰并禁用': checks.tierDisabled === 7,
       '当前目标档位 120Hz 高亮': checks.tierActive === '120Hz',
       '当前刷新率显示 120 Hz': checks.refreshCurrent === '120 Hz',
-      '已设目标时锁定开关可点': checks.pin === 'false' && checks.pinDisabled === false,
+      '刷新率管理总开关已打开且可点': checks.pin === 'true' && checks.pinDisabled === false,
       '机型信息卡片 >= 7 组': checks.devCards >= 7,
       '机型信息行 >= 14 条': checks.devRows >= 14,
       '首行为设备品牌': checks.devScreen === 'REDMI',
@@ -285,8 +285,8 @@ class Cdp {
     results.push((unknown.tiers === 10 && unknown.disabled === 0 ? 'PASS ' : 'FAIL ') +
       '读不到档位表时不置灰任何档位' + (unknown.tiers === 10 && unknown.disabled === 0 ? '' :
         '（实际 ' + unknown.tiers + ' 档 / ' + unknown.disabled + ' 个置灰）'));
-    results.push((unknown.note.indexOf('放开全部档位') >= 0 ? 'PASS ' : 'FAIL ') +
-      '读不到档位表时说明已放开全部档位' + (unknown.note.indexOf('放开全部档位') >= 0 ? '' : '（实际 ' + JSON.stringify(unknown.note) + '）'));
+    results.push((unknown.note.indexOf('开启管理后可尝试') >= 0 ? 'PASS ' : 'FAIL ') +
+      '读不到档位表时说明需开启管理后尝试' + (unknown.note.indexOf('开启管理后可尝试') >= 0 ? '' : '（实际 ' + JSON.stringify(unknown.note) + '）'));
 
     // 底栏玻璃的交互：高光跟随指针（只有底栏保留玻璃）
     const glow = await cdp.evaluate(`(() => {

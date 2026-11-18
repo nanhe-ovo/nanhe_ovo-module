@@ -3,14 +3,14 @@
 基于 [Uperf-Game-Turbo](https://github.com/yinwanxi/Uperf-Game-Turbo) 的性能调度模块（Magisk / KernelSU / APatch 通用可刷入 zip），内置一套 Miuix 观感的本地 WebUI（绿色「工作中」状态卡、纯白大圆角卡、底部悬浮液态玻璃胶囊导航）：切换全局性能模式、为单个应用绑定调度策略、直接控制 CPU / GPU 频率区间、调节屏幕刷新率，关于页展示机型与系统信息，并带一份自动记录的运行日志。
 
 - 模块 ID：`nanhe_ovo`
-- 版本：`v1.5.0`（versionCode `20261118`）
+- 版本：`v1.6.0`（versionCode `202611181`）
 - 引擎：uperf（来自 Uperf-Game-Turbo，Apache-2.0）
 - WebUI：纯本地 HTML/CSS/JS，无远程资源，不联网
 
 ## 安装
 
 1. 确认设备为 **arm64**（模块内置的 uperf 与 busybox 只有 aarch64 版本）。
-2. 在管理器里刷入 `nanhe_ovo-v1.5.0-20261118.zip`：Magisk → 模块 → 从本地安装；KernelSU / APatch → 模块 → 安装。
+2. 在管理器里刷入 `nanhe_ovo-v1.6.0-20261118.zip`：Magisk → 模块 → 从本地安装；KernelSU / APatch → 模块 → 安装。
 3. 重启。
 4. 打开面板：KernelSU / APatch 管理器 → 模块 → 南何ovo → 打开 WebUI。
    Magisk 本体没有模块 WebUI，可用 KsuWebUIStandalone 等工具打开 `/data/adb/modules/nanhe_ovo/webroot/index.html`。
@@ -28,7 +28,7 @@
 | 页面 | 能力 |
 | --- | --- |
 | 总览 | 当前模式、可用模式列表（来自 `uperf.json` 的 `presets`）、CPU/GPU 实时频率、引擎运行状态、系统调优开关 |
-| 频率与显示 | 每个 CPU 策略 / GPU 节点的最低–最高频率，只能选设备上报的频率表；屏幕刷新率（30–240Hz，设备声明过的档位可选，未声明的置灰；读不到档位表时放开全部档位）；「强制取消静止降频」开关；一键恢复本次开机原始边界 |
+| 频率与显示 | 每个 CPU 策略 / GPU 节点的最低–最高频率，只能选设备上报的频率表；屏幕刷新率（30–240Hz，设备声明过的档位可选，未声明的置灰；读不到档位表时放开全部档位）；「刷新率管理」总开关（开启后强制固定上下限，关闭则完全不写系统设置）；一键恢复本次开机原始边界 |
 | 应用 | 默认规则 `*`、熄屏规则 `-`、任意已安装应用的调度策略（保存 / 删除） |
 | 关于 | 版本、机型与系统信息（设备 / 系统 / 硬件 / 内存 RAM / 内部存储 / 屏幕 / 电池）、运行日志（自动记录，可刷新 / 清空）、来源与许可、能力边界 |
 
@@ -37,7 +37,7 @@
 ## 界面：Miuix 观感 + 只在底栏的液态玻璃
 
 - 浅灰底（`#f1f2f4`）+ 纯白 28px 圆角卡片，卡片不再铺 `backdrop-filter`，也没有玻璃伪元素；
-- 首屏左右分栏：左侧绿色「工作中」状态卡（状态标签、根方案、模式与版本、右侧圆形对勾水印），右侧两枚统计卡（已绑定应用规则 / 可调频率节点）；下面一张白卡按「标签在上、值在下」的竖排列出运行状态（Root 方案、当前模式、模块版本、调度引擎、SUSFS 状态、频率基线、系统调优、平台配置）；
+- 首屏左右分栏：左侧绿色「工作中」状态卡（状态标签、根方案、模式与版本、右侧圆形对勾水印），右侧两枚统计卡（已绑定应用规则 / 可调频率节点）；下面一张白卡按「标签在上、值在下」的竖排列出运行状态（Root 方案、当前模式、模块版本、调度引擎、频率基线、系统调优、平台配置）；
 - 状态卡的标签是**自动读到的 Root 方案**：KernelSU 的 LKM 形态显示 `LKM`，内核内置的 KernelSU 显示 `GKI`，`APatch`、`Magisk` 各自显示，读不到才是「未知」；
 - 状态完全由后端 `status` 驱动：`info.uperf=运行中` 才是「工作中」，读不到就显示「待机」，只读演示显示「只读演示」，不做假成功；
 - 底栏是唯一保留玻璃的区域：悬浮胶囊 `position: fixed`，离底边 14px（另加 `env(safe-area-inset-bottom)`），宽度 `min(430px, 100% - 26px)`，`border-radius: 999px`；
@@ -61,6 +61,7 @@ sh /data/adb/modules/nanhe_ovo/script/control.sh freq cpu-policy0 300000 1800000
 sh /data/adb/modules/nanhe_ovo/script/control.sh restore
 sh /data/adb/modules/nanhe_ovo/script/control.sh tune off
 sh /data/adb/modules/nanhe_ovo/script/control.sh refresh 120 on
+sh /data/adb/modules/nanhe_ovo/script/control.sh refresh_manage off
 sh /data/adb/modules/nanhe_ovo/script/control.sh deviceinfo
 ```
 
@@ -77,15 +78,20 @@ sh /data/adb/modules/nanhe_ovo/script/control.sh deviceinfo
 面板通过系统设置的 `peak_refresh_rate` / `min_refresh_rate` 控制刷新率，不写厂商私有节点：
 
 - **档位只取设备真正声明过的值**。后端把 `dumpsys display` 与 `dumpsys SurfaceFlinger` 两份输出一起交给同一个解析器（不再二选一），同时认 `fps=`、`refreshRate=`、`renderFrameRate=`、`framerate=`、`mRefreshRate=`、`vsyncPeriod=`（纳秒，按 `1e9 / period` 换算）和 `1880x3008@120.0Hz` 这类写法，取整、限 20–300、去重，再与候选档位 `30 48 60 72 90 120 144 165 180 240` 求交集。
-- **读不到档位表时不整块禁用**。`status` 会额外输出 `refresh_known 0|1`：`1` 表示解析到了档位表，`0` 表示这次一个档位都没读到。读到表时档位取交集，没声明的档位在前端置灰、不可点，后端也会用 `<HZ> Hz is not supported by this device` 拒绝；读不到表时 `refresh_supported` 直接返回全部 10 档，界面提示「已放开全部档位供你尝试」，写入不再被拒——宁可让系统忽略一次写入（值保持不变），也不因为一次解析失败把整页锁死。
+- **读不到档位表时不整块禁用**。`status` 会额外输出 `refresh_known 0|1`：`1` 表示解析到了档位表，`0` 表示这次一个档位都没读到。读到表时档位取交集，没声明的档位在前端置灰、不可点，后端也会用 `<HZ> Hz is not supported by this device` 拒绝；读不到表时 `refresh_supported` 直接返回全部 10 档，界面提示「开启管理后可尝试设备支持的档位」，写入交由系统决定——宁可让系统忽略一次写入（值保持不变），也不因为一次解析失败把整页锁死。
 - **界面与后端双重校验**。前端把不支持的档位渲染成置灰、带删除线且不可点击的按钮；即使绕过前端直接调用命令，后端也会在拿到档位表的前提下拒绝未声明的档位。
-- **强制取消静止降频**。打开后除了写 `peak_refresh_rate`，还会把 `min_refresh_rate` 钉到同一档位，画面静止、熄屏回来时系统不会把刷新率降回 60Hz；关闭则删除 `min_refresh_rate`，交回系统动态调节。写下限失败时会把上限还原成原值并报错，不留半改状态。
-- **开机自动重写（修开机锁 60Hz）**。`service.sh` 会在 `initsvc.sh` 之后调用 `script/refresh_apply.sh`：等 `sys.boot_completed=1`，读 `/data/adb/nanhe_ovo/refresh.txt`（`refresh_pin` 表示是否钉下限），应用后 `sleep 6`、`sleep 10` 各补写一次，抵消系统在开机与解锁阶段的静默回落。**首次开机没有保存目标时**，有档位表就取本机最高档并默认开启下限锁定，这就是「开机锁 60Hz」的修法；之后以面板里最后一次选择为准。
-- **读不到档位表时沿用当前值**。开机脚本若解析不到任何档位，不再凭空猜一个最高档（可能给出屏幕不支持的 240Hz），而是沿用 `refresh_current()` 读到的系统当前值，并记录一行「未读到档位表，沿用当前刷新率 XHz」；连当前值也读不到才跳过。任何异常都以 `exit 0` 结束，绝不影响开机。
+- **刷新率管理总开关（v1.6.0）**。默认关闭，关闭时模块完全不写 `peak_refresh_rate` / `min_refresh_rate`，开机脚本也直接退出，刷新率完全交给系统；开启后挑选目标档位即强制固定上下限，画面静止、熄屏回来不会降回 60Hz。关闭开关会先把系统原值还原（`refresh_orig.txt` 记为 `null` 的键直接删除），再删掉目标与钉住标记，不把改过的值留给系统。
+- **开机自动重写（修开机锁 60Hz）**。`service.sh` 会在 `initsvc.sh` 之后调用 `script/refresh_apply.sh`：总开关为 `on` 且有受支持的目标档位时，等 `sys.boot_completed=1` 应用，再 `sleep 6`、`sleep 10` 各补写一次，抵消系统在开机与解锁阶段的静默回落。**新安装不再自动抢最高档**；v1.5.0 升级上来的旧配置只要存在 `refresh.txt` 会自动视为开启，保持原目标。
+- **读不到档位表时沿用当前值**。开启管理但解析不到任何档位时，不再凭空猜最高档，而是按保存目标或系统当前值尝试，并记录日志；没有目标就保持系统设置。任何异常都以 `exit 0` 结束，绝不影响开机。
 
-相关状态文件：`/data/adb/nanhe_ovo/refresh.txt`（目标 Hz）、`refresh_pin`（存在即钉下限）、`refresh_orig.txt`（首次写入前的系统原值，卸载时用于还原）。
+相关状态文件：`/data/adb/nanhe_ovo/refresh.txt`（目标 Hz）、`refresh_pin`（存在即钉下限）、`refresh_manage`（`on` / `off` 总开关）、`refresh_orig.txt`（首次写入前的系统原值，关闭或卸载时用于还原）。
 
-## 关于页的机型信息
+## 平台专项（v1.6.0）
+
+- **天玑 / Mali GPU 跳频**：保留内核 fast DVFS，不再强制写 `aging_mode=disable`；新增 `script/gpu_profile.sh`，按当前模式在真实 OPP 表里选择一个"不低于比例目标"的最高档抬升 `min_freq`，不改 `max_freq`。性能档 75%、极速档 85%、超频档 95%，省电 / 均衡恢复本次开机首次应用前的快照；同时按节点是否存在写 `upthreshold` / `downdifferential` / `polling_interval=32`。D9400 的 900–1050MHz 只是样本验证，脚本不写死频点，没有 OPP 表就不动手。
+- **骁龙 8 Elite 低分组接活**：8 Elite 是 2 个 Oryon Prime + 6 个 Oryon Performance 全大核，没有传统 A5xx 小核；Metric 的 CPU0–1 是最低策略组。v1.6.0 只定向开启 `sdm8elite.json` 的 sched，把 `0-1` 作为轻载组，音频、网络、解码等线程映射到低分组并由 util 驱动升频，不再强抬 `min_freq`。其它平台配置保持原样。
+- **SUSFS 状态检测移除**：v1.6.0 不再在 `status` 输出、UI 展示或告警中报告 SUSFS 状态；兼容探测函数与启动兼容说明保留，不打乱已有 Root 环境。
+
 
 `control.sh deviceinfo` 只读采集，按固定分段输出 `kv <section> <label> <value>`，前端按「设备信息 / 系统信息 / 硬件 / 内存 RAM / 内部存储 / 屏幕 / 电池」渲染成卡片列表：
 
@@ -121,8 +127,9 @@ sh /data/adb/modules/nanhe_ovo/script/control.sh deviceinfo
 7. **与其它 uperf 类模块冲突**。同时安装会互相改写频率与规则；安装脚本只提示，不会删除任何其它模块。
 8. **刷新率档位来自 `dumpsys` 文本解析**。`dumpsys display` / `dumpsys SurfaceFlinger` 的格式随厂商与系统版本变化；现在同时识别 `fps=`、`refreshRate=`、`vsyncPeriod=`、`NN Hz` 等写法，仍解析不到时不会再把整块控件禁用，而是放开全部 30–240Hz 让你尝试（`refresh_known=0` 会显示在状态里）。若某个档位写入后系统仍保持原值，说明该档确实不受支持；把 `dumpsys display | head -n 40` 的输出发回来可以补上对应写法。
 9. **刷新率与厂商标注值可能不同**。这里写的是系统允许的上下限，不是屏幕硬件标称值；部分机型还要看「显示刷新率」系统开关或开发者选项的覆盖，模块不会去改这些开关。
-10. **首次开机会默认取最高档并钉住下限**。这是为了直接把「开机锁 60Hz」解掉，代价是耗电与发热略高于自动调节；不想要时在面板里选一个较低档位或关掉「强制取消静止降频」，之后开机会按新值重写。
+10. **刷新率管理默认关闭**。新安装完全不碰系统刷新率；需要强制固定时在频率页打开「刷新率管理」并选择档位。v1.5.0 升级用户若已有 `refresh.txt`，会自动沿用并视为开启。
 11. **刷新率的持久化依赖开机脚本**。面板写入是即时生效，重启后由 `service.sh` 里的 `refresh_apply.sh` 重写；若管理器禁止模块开机自启或你手动禁用了模块服务，重启后就会回到系统自己的策略。
+12. **GPU 分模式窗口只抬下限**。脚本不改 `max_freq`、不升压、不突破出厂 OPP 表；厂商内核覆盖 `min_freq` 或节点名不同都可能让效果有限，回读不符只记日志。骁龙低分组配置属推测派活，需真机按调度曲线校准。
 
 ## 卸载
 
@@ -147,8 +154,9 @@ nanhe_ovo/
 ├── bin/busybox/busybox      busybox（aarch64）
 ├── config/*.json            97 个平台配置 + template.json
 ├── script/
-│   ├── control.sh           WebUI 后端（status/freq/rule/mode/restore/tune/refresh/deviceinfo）
-│   ├── refresh_apply.sh     开机应用刷新率（等开机完成、补写三次、失败不影响开机）
+│   ├── control.sh           WebUI 后端（status/freq/rule/mode/restore/tune/refresh/refresh_manage/deviceinfo）
+│   ├── refresh_apply.sh     开机应用刷新率（受总开关控制、补写两次、失败不影响开机）
+│   ├── gpu_profile.sh       天玑 Mali GPU 分模式频率窗口（只抬下限、不改上限）
 │   ├── initsvc.sh           启动流程（受 tune 开关控制）
 │   ├── pathinfo.sh / lib*.sh / powercfg_*.sh / platform_special.sh / miui_migt.sh
 ├── webroot/                 面板（index.html / style.css / core.js / app.js）
@@ -169,6 +177,10 @@ nanhe_ovo/
 - `initsvc.sh` 增加系统调优开关与 `/data/powercfg.sh` 占用保护；
 - 新增 `script/refresh_apply.sh`（开机刷新率应用），`control.sh` 增加 `refresh` / `deviceinfo` 命令；
 - 面板增加刷新率档位、强制取消静止降频开关与机型信息卡片；
+- v1.6.0 天玑 Mali GPU 改为分模式窄窗口：性能 75%、极速 85%、超频 95% 的 OPP 目标只抬 `min_freq`，省电 / 均衡恢复开机快照；恢复内核 fast DVFS，不再强制关 `aging_mode`；
+- v1.6.0 骁龙 8 Elite 低分组定向优化：开启 sched、`0-1` 轻载组、音频/网络/解码线程派活与 cpuset `0-1`，按 util 升频而不是强抬下限；
+- v1.6.0 新增「刷新率管理」总开关，默认关闭并交还系统；关闭时还原 `peak_refresh_rate` / `min_refresh_rate` 原值；新安装不再抢最高档；
+- v1.6.0 移除 SUSFS 状态检测、告警和 UI 展示，兼容探测代码保留；
 - v1.4.0 全部 75 份平台配置补齐 `crazy`（超频）preset：999 功耗上限 + margin/burst 1.0 + 关闭低效频点限制；面板第五档「超频」切换时把可写 CPU 集群上限推到频率表最高档（不超出厂上限），只读节点分类记日志跳过，离开自动恢复开机基线；
 - v1.4.0 新增 7 份 2026 平台推测配置（`mtd9600pro`/`mtd9600m`/`mtd9500s`/`mtd8500`/`sdm8e6`/`sdm8e6x`/`exynos2700`），功耗模型按 Uperf 方法论推算，板级代号未公开前不参与自动匹配；
 - v1.5.0 补齐 23 份 2020 年以来存量平台推测配置（骁龙 / 天玑 / Exynos / 麒麟 / Tensor / 展锐），覆盖天玑 6100+/7050/1100/9300/7050/8400、麒麟 990/9000/9000S/9010/9020、Exynos 1080/1480/1580/2400、Tensor G4、骁龙 8s Gen3 / 8 Elite / 7+ Gen2 / 6 Gen1、展锐 T310 / SC9832E 等；全部标注「非官方调参表，需真机校准」，既有上游配置原样保留未改动；

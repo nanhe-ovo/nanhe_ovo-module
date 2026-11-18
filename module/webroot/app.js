@@ -39,6 +39,7 @@
     'info\trefresh\t120',
     'info\trefresh_target\t120',
     'info\trefresh_pin\toff',
+    'info\trefresh_manage\toff',
     'info\trefresh_tiers\t30 48 60 72 90 120 144 165 180 240',
     'info\trefresh_supported\t60 90 120 144',
     'info\trefresh_known\t1',
@@ -208,11 +209,11 @@
     const target = Number(info.refresh_target) > 0 ? Number(info.refresh_target) : null;
     // 后端读不到档位表时会放开全部档位（refresh_known=0），此时不能把界面整块禁用。
     const known = info.refresh_known !== '0';
-    return { tiers, supported, current, target, known, pin: info.refresh_pin === 'on' };
+    return { tiers, supported, current, target, known, pin: info.refresh_pin === 'on', managed: info.refresh_manage === 'on' };
   }
   function canPin() {
     const r = refreshInfo();
-    return !!r.target && r.supported.length > 0;
+    return r.supported.length > 0;
   }
 
   function renderRefresh() {
@@ -225,30 +226,32 @@
       const chip = el('button', 'tier-chip' + (r.target === hz ? ' active' : ''), hz + 'Hz');
       chip.type = 'button';
       chip.dataset.write = '';
-      chip.dataset.unavailable = String(!ok);
-      chip.setAttribute('aria-pressed', String(r.target === hz));
+      chip.dataset.unavailable = String(!ok || !r.managed);
+      chip.setAttribute('aria-pressed', String(r.managed && r.target === hz));
       if (!ok) {
         chip.classList.add('unsupported');
         chip.setAttribute('aria-disabled', 'true');
         chip.title = '本机不支持该档位，已禁止选择';
-      }
+      } else if (!r.managed) chip.title = '请先开启刷新率管理';
       chip.addEventListener('click', () => {
+        if (!r.managed) { notice('当前由系统管理刷新率；请先开启「刷新率管理」。', true); return; }
         if (!ok) { notice('本机不支持 ' + hz + 'Hz，已禁止选择。', true); return; }
-        mutate('设置屏幕刷新率为 ' + hz + 'Hz？',
-          '将写入系统刷新率' + (r.pin ? '上限与下限（强制取消静止降频）' : '上限') +
-          '，并记录该目标，开机会自动重新应用。', 'refresh', [hz, r.pin ? 'on' : 'off']);
+        mutate('固定屏幕刷新率为 ' + hz + 'Hz？',
+          '将同时写入刷新率上限与下限，取消静止降频，并记录目标供开机重新应用。',
+          'refresh', [hz, 'on']);
       });
       holder.append(chip);
     });
     if (!r.tiers.length) holder.append(el('p', 'empty', '后端没有报告刷新率档位。'));
-    $('pin-switch').setAttribute('aria-checked', String(r.pin));
+    $('pin-switch').setAttribute('aria-checked', String(r.managed));
     $('pin-switch').disabled = state.busy || state.confirming || !state.live || !canPin();
     let note;
     if (!state.live) note = '只读演示：不会写入任何刷新率设置。';
-    else if (!r.known) note = '本机没有上报可用的刷新率档位表，已放开全部档位供你尝试；系统不接受时会保持原值，可在关于页核对当前刷新率。';
+    else if (!r.known) note = '本机没有上报可用的刷新率档位表；开启管理后可尝试设备支持的档位，系统不接受时会保持原值。';
     else if (!r.supported.length) note = '本机上报的档位与 30–240Hz 的常用档位没有交集，刷新率调节不可用。';
-    else if (r.target) note = '已记录目标 ' + r.target + 'Hz，开机由模块重新应用' + (r.pin ? '，并钉住下限。' : '。');
-    else note = '尚未设置目标；开机默认取本机最高档 ' + Math.max(...r.supported) + 'Hz，可在上方修改。';
+    else if (!r.managed) note = '系统管理：模块不写入刷新率，开机也不会自动抢最高档。';
+    else if (r.target) note = '模块固定为 ' + r.target + 'Hz，上限与下限一致，开机自动重新应用。';
+    else note = '模块管理已开启，请选择上方档位。';
     $('refresh-note').textContent = note;
   }
 
@@ -331,9 +334,9 @@
     const names = {
       device_config: '平台配置', version: '模块版本', mode: '当前模式', modes: '可用模式',
       uperf: '调度引擎', tune: '系统调优', baseline: '频率基线', config: '配置文件',
-      boot_id: '启动批次', service: '服务状态', backend: '后端', susfs: 'SUSFS 状态', root: 'Root 方案',
+      boot_id: '启动批次', service: '服务状态', backend: '后端', root: 'Root 方案',
     };
-    const order = ['root', 'mode', 'version', 'uperf', 'susfs', 'baseline', 'tune', 'device_config'];
+    const order = ['root', 'mode', 'version', 'uperf', 'baseline', 'tune', 'device_config'];
     Object.entries(state.status.info)
       .filter(([key]) => order.indexOf(key) >= 0)
       .sort((a, b) => (order.indexOf(a[0]) + 1 || 99) - (order.indexOf(b[0]) + 1 || 99))
@@ -554,12 +557,11 @@
   });
   $('pin-switch').addEventListener('click', () => {
     const r = refreshInfo();
-    if (!r.target) { notice('请先选择一个刷新率档位，再打开「强制取消静止降频」。', true); return; }
-    mutate(r.pin ? '关闭强制取消静止降频？' : '开启强制取消静止降频？',
-      '目标刷新率 ' + r.target + 'Hz\n' +
-      (r.pin ? '将删除刷新率下限，系统可在静止时回落到较低档位。' : '将把下限也钉到 ' + r.target + 'Hz，画面静止时不再回落。') +
-      '\n改动立即生效，并由开机脚本重新应用。',
-      'refresh', [r.target, r.pin ? 'off' : 'on']);
+    mutate(r.managed ? '关闭刷新率管理？' : '开启刷新率管理？',
+      r.managed
+        ? '将还原模块接管前的系统刷新率上下限，之后完全由系统动态调节，开机不再补写。'
+        : '将固定当前或已选择的刷新率档位，同时写入上限与下限，开机自动重新应用。',
+      'refresh_manage', [r.managed ? 'off' : 'on']);
   });
   $('app-search').addEventListener('input', () => { state.limit = 60; renderApps(); setBusy(state.busy); });
 

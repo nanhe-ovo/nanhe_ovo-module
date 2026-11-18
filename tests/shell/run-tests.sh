@@ -128,10 +128,16 @@ make_fixture() {
         -e "s#^PATH=/system/bin:/system/xbin#PATH=$D/bin:$HOST_PATH#" \
         "$MODULE/script/control.sh" > "$D/control.sh"
     chmod +x "$D/control.sh"
-    # 开机刷新率脚本副本：只替换运行时目录前缀
+    # 开机刷新率与 MTK GPU 分模式脚本副本：只替换固定路径前缀
     sed -e "s#/data/adb/nanhe_ovo#$D/data/adb/nanhe_ovo#g" \
         "$MODULE/script/refresh_apply.sh" > "$D/refresh_apply.sh"
     chmod +x "$D/refresh_apply.sh"
+    mkdir -p "$D/data/adb/modules/nanhe_ovo/script"
+    sed -e "s#/data/adb/nanhe_ovo#$D/data/adb/nanhe_ovo#g" \
+        -e "s#/proc/sys/kernel/random/boot_id#$D/boot_id#g" \
+        -e "s#/sys/#$D/sys/#g" \
+        "$MODULE/script/gpu_profile.sh" > "$D/data/adb/modules/nanhe_ovo/script/gpu_profile.sh"
+    chmod +x "$D/data/adb/modules/nanhe_ovo/script/gpu_profile.sh"
     grep -q "PATH=$D/bin:$HOST_PATH" "$D/control.sh" ||
         bad "后端 PATH 行未被替换（control.sh 的内部 PATH 写法已变动，桩命令无法生效）"
     grep -q "sys/kernel/random/boot_id" "$D/control.sh" &&
@@ -160,6 +166,10 @@ eq "当前模式" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="mode"{print $3}')" 
 eq "调优默认开启" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="tune"{print $3}')" 开启
 eq "版本来自 module.prop" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="version"{print $3}')" "$(awk -F '=' '$1 == "version" {print $2; exit}' "$MODULE/module.prop")"
 eq "uperf 未运行" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="uperf"{print $3}')" 未运行
+eq "新安装刷新率默认交给系统" "off" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="refresh_manage"{print $3}')"
+hasnt "SUSFS 不再进入状态上报" "$OUT" "$(printf 'info\tsusfs\t')"
+has "SUSFS 兼容函数仍保留" "$(cat "$MODULE/script/control.sh")" 'susfs_state() {'
+hasnt "SUSFS 探测不再被 status 调用" "$(cat "$MODULE/script/control.sh")" 'SUSFS_ST='
 : > "$FAKE/uperf.running"
 run_ctl status
 eq "uperf 运行中" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="uperf"{print $3}')" 运行中
@@ -319,6 +329,11 @@ eq "当前刷新率来自 SurfaceFlinger" "120" "$(printf '%s\n' "$OUT" | awk -F
 eq "尚未设置目标" "none" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="refresh_target"{print $3}')"
 eq "档位表来自设备 dump" "1" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="refresh_known"{print $3}')"
 
+run_ctl refresh_manage on
+eq "开启刷新率总开关成功" "0" "$RC"
+eq "无历史目标时固定当前刷新率" "120" "$(sget peak_refresh_rate)"
+eq "开启管理即固定下限" "120" "$(sget min_refresh_rate)"
+eq "管理状态已持久化" "on" "$(cat "$RR/refresh_manage")"
 run_ctl refresh 120 on
 eq "写入 120Hz 成功" "0" "$RC"
 eq "peak_refresh_rate 已写入" "120" "$(sget peak_refresh_rate)"
@@ -351,6 +366,17 @@ run_ctl refresh 120 on
 has "符号链接文案" "$ERR" "refresh state symlink refused"
 rm -f "$RR/refresh.txt" "$RR/refresh.txt.bad"
 printf '%s\n' 120 > "$RR/refresh.txt"
+
+run_ctl refresh_manage off
+eq "关闭刷新率管理成功" "0" "$RC"
+eq "关闭后还原系统原 peak（原为空则删除）" "" "$(sget peak_refresh_rate)"
+eq "关闭后还原系统原 min（原为空则删除）" "" "$(sget min_refresh_rate)"
+eq "关闭状态已持久化" "off" "$(cat "$RR/refresh_manage")"
+eq "关闭后不再保留下限标记" "no" "$([ -f "$RR/refresh_pin" ] && echo yes || echo no)"
+run_ctl refresh_manage invalid
+[ "$RC" != 0 ] && ok "非法刷新率管理参数被拒绝" || bad "非法刷新率管理参数被接受"
+run_ctl refresh 120 on
+eq "手动选档会重新开启管理" "on" "$(cat "$RR/refresh_manage")"
 
 printf '\n== 刷新率档位读取（多种 dump 写法与读不到时的兜底）==\n'
 # 真机上档位不一定写成 fps=：可能只有 refreshRate= / vsyncPeriod=（纳秒）/ @120Hz
@@ -416,41 +442,44 @@ eq "每个分组都有输出" "$(printf '%s\n' "$OUT" | awk -F'\t' '$1=="kv"{pri
 eq "只有 kv 与结尾 ok 两类行" "0" "$(printf '%s\n' "$OUT" | awk -F'\t' '$1!="kv"&&$1!="ok"' | wc -l | tr -d ' ')"
 eq "结尾为 ok deviceinfo" "ok deviceinfo" "$(printf '%s\n' "$OUT" | awk -F'\t' 'END{print $1, $2}')"
 
-printf '\n== 开机刷新率（修开机锁 60Hz）==\n'
+printf '\n== 开机刷新率（总开关与系统管理）==\n'
 BOOT_RUN() { BOOT_OUT=$(PATH="$FAKE/bin:$PATH" "$SH" "$FAKE/refresh_apply.sh" 2>&1); BOOT_RC=$?; }
-rm -f "$RR/refresh.txt" "$RR/refresh_pin" "$FAKE/settings_store"
+rm -f "$RR/refresh.txt" "$RR/refresh_pin" "$RR/refresh_manage" "$FAKE/settings_store"
 BOOT_RUN
 eq "无记录时退出 0（不影响开机）" "0" "$BOOT_RC"
-eq "首次开机取本机最高档" "144" "$(cat "$RR/refresh.txt")"
-eq "开机写入 peak" "144" "$(sget peak_refresh_rate)"
-eq "开机同时钉住下限" "144" "$(sget min_refresh_rate)"
-has "日志说明默认取最高档" "$BOOT_OUT" "首次开机默认取最高档 144Hz"
+eq "新安装不生成刷新率目标" "no" "$([ -f "$RR/refresh.txt" ] && echo yes || echo no)"
+eq "新安装开机不写 peak" "" "$(sget peak_refresh_rate)"
+eq "新安装开机不写 min" "" "$(sget min_refresh_rate)"
+has "日志说明保持系统管理" "$BOOT_OUT" "保持系统设置"
 
-printf '%s\n' 120 > "$RR/refresh.txt"; : > "$RR/refresh_pin"
+# v1.5.0 只有 refresh.txt、没有总开关文件时，按旧行为兼容为开启。
+printf '%s\n' 120 > "$RR/refresh.txt"
+rm -f "$RR/refresh_manage" "$FAKE/settings_store"
+BOOT_RUN
+eq "旧版保存目标仍按 120Hz 应用" "120" "$(sget peak_refresh_rate)"
+eq "新版开启管理会强制钉住下限" "120" "$(sget min_refresh_rate)"
+
+printf '%s\n' off > "$RR/refresh_manage"
 rm -f "$FAKE/settings_store"
 BOOT_RUN
-eq "按已保存目标应用" "120" "$(sget peak_refresh_rate)"
-eq "锁定开启时下限同步" "120" "$(sget min_refresh_rate)"
+eq "明确关闭时保留系统 peak" "" "$(sget peak_refresh_rate)"
+eq "明确关闭时保留系统 min" "" "$(sget min_refresh_rate)"
 
-rm -f "$RR/refresh_pin"
-rm -f "$FAKE/settings_store"
-BOOT_RUN
-eq "关闭锁定时只写上限" "120" "$(sget peak_refresh_rate)"
-eq "关闭锁定时不留下限" "" "$(sget min_refresh_rate)"
-
+printf '%s\n' on > "$RR/refresh_manage"
 printf '%s\n' 90 > "$RR/refresh.txt"
 rm -f "$FAKE/settings_store"
 BOOT_RUN
-eq "保存的档位不被设备支持时回落最高档" "144" "$(cat "$RR/refresh.txt")"
+eq "不支持的已保存档位被跳过" "" "$(sget peak_refresh_rate)"
+eq "跳过时不再改写目标为最高档" "90" "$(cat "$RR/refresh.txt")"
+has "跳过日志说明保持系统设置" "$BOOT_OUT" "保持系统设置"
 
-# 开机脚本同样要能在读不到档位表时工作：沿用系统当前值，而不是跳过
+# 读不到档位表但已有明确目标时，沿用通用候选校验并应用保存值。
 : > "$D/dumpsys_silent"
-rm -f "$RR/refresh.txt" "$RR/refresh_pin" "$FAKE/settings_store"
-printf '%s\n' peak_refresh_rate=120 > "$FAKE/settings_store"
+printf '%s\n' 120 > "$RR/refresh.txt"
+rm -f "$FAKE/settings_store"
 BOOT_RUN
-eq "读不到档位表时沿用当前刷新率" "120" "$(cat "$RR/refresh.txt")"
-eq "沿用当前值时会写入 peak" "$(sget peak_refresh_rate)" 120
-has "日志说明沿用当前刷新率" "$BOOT_OUT" "未读到档位表，沿用当前刷新率 120Hz"
+eq "无档位表时仍应用已保存目标" "120" "$(sget peak_refresh_rate)"
+eq "无档位表时下限也按总开关固定" "120" "$(sget min_refresh_rate)"
 rm -f "$D/dumpsys_silent"
 mkdir -p "$D/data/adb/nanhe_ovo/runtime/lock.aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 run_ctl status
@@ -701,6 +730,50 @@ else
     bad "存在无法解析的配置 JSON"
 fi
 has "mtd9400 超频档 DDR 保底 6.4G" "$(cat "$CONFIG_DIR/mtd9400.json")" "6400000000"
+if python3 - "$CONFIG_DIR/sdm8elite.json" <<'PY'
+import json, sys
+c = json.load(open(sys.argv[1], encoding='utf-8'))
+s = c['modules']['sched']
+assert s['enable'] is True
+assert s['cpumask']['c0'] == [0, 1]
+assert s['cpumask']['c1'] == [2, 3, 4, 5]
+assert s['cpumask']['c2'] == [6, 7]
+assert all(s['affinity']['bg'][k] == 'c0' for k in ('bg', 'fg', 'idle', 'touch', 'boost'))
+assert c['initials']['sysfs']['cpusetBg'] == '0-1'
+assert c['initials']['sysfs']['cpusetSysBg'] == '0-1'
+PY
+then ok "8 Elite 低分组派活与三档簇掩码正确"; else bad "8 Elite 低分组配置不符合预期"; fi
+
+printf '\n== v1.6.0 MTK Mali GPU 分模式窗口 ==\n'
+MALI="$FAKE/sys/class/devfreq/mali"
+mkdir -p "$MALI"
+printf '%s\n' 300000000 > "$MALI/min_freq"
+printf '%s\n' 1250000000 > "$MALI/max_freq"
+printf '%s\n' '300000000 450000000 600000000 750000000 900000000 1050000000 1250000000' > "$MALI/available_frequencies"
+printf '%s\n' 40 > "$MALI/upthreshold"
+printf '%s\n' 10 > "$MALI/downdifferential"
+printf '%s\n' 50 > "$MALI/polling_interval"
+GP_RUN() { PATH="$FAKE/bin:$PATH" "$SH" "$FAKE/data/adb/modules/nanhe_ovo/script/gpu_profile.sh" "$1"; }
+GP_RUN performance
+eq "性能档选择不超过 75% 目标的真实 OPP" "900000000" "$(cat "$MALI/min_freq")"
+eq "性能档不压低 GPU 上限" "1250000000" "$(cat "$MALI/max_freq")"
+eq "性能档升压阈值" "85" "$(cat "$MALI/upthreshold")"
+eq "性能档降频迟滞" "15" "$(cat "$MALI/downdifferential")"
+eq "性能档采样周期" "32" "$(cat "$MALI/polling_interval")"
+GP_RUN fast
+eq "极速档选择真实高档下限" "1050000000" "$(cat "$MALI/min_freq")"
+GP_RUN crazy
+eq "超频档仍不超出真实 OPP 表" "1050000000" "$(cat "$MALI/min_freq")"
+GP_RUN balance
+eq "均衡档恢复开机 GPU 下限" "300000000" "$(cat "$MALI/min_freq")"
+eq "均衡档恢复原升压阈值" "40" "$(cat "$MALI/upthreshold")"
+eq "均衡档恢复原降频差值" "10" "$(cat "$MALI/downdifferential")"
+eq "均衡档恢复原采样周期" "50" "$(cat "$MALI/polling_interval")"
+GP_RUN invalid
+eq "非法 GPU 模式静默跳过且不改动" "300000000" "$(cat "$MALI/min_freq")"
+rm -f "$MALI/available_frequencies"
+GP_RUN performance
+eq "无 OPP 表时不构造频点" "300000000" "$(cat "$MALI/min_freq")"
 
 ########################################
 # 汇总

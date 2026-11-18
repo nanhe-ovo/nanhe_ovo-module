@@ -11,6 +11,7 @@
 RROOT=/data/adb/nanhe_ovo
 TARGET=$RROOT/refresh.txt
 PIN=$RROOT/refresh_pin
+MANAGE=$RROOT/refresh_manage
 TIERS='30 48 60 72 90 120 144 165 180 240'
 
 log() {
@@ -133,13 +134,19 @@ apply_rate() {
 [ -d "$RROOT" ] && [ ! -L "$RROOT" ] || exit 0
 [ "$(id -u 2>/dev/null)" = 0 ] || exit 0
 
+MANAGE_STATE=$(cat "$MANAGE" 2>/dev/null)
+case "$MANAGE_STATE" in on|off) ;;
+    *)
+        # 旧版升级：保存过目标即视为已开启；新安装没有目标时默认交给系统。
+        if [ -f "$TARGET" ] && [ ! -L "$TARGET" ]; then MANAGE_STATE=on; else MANAGE_STATE=off; fi;; esac
+if [ "$MANAGE_STATE" != on ]; then
+    log '刷新率管理已关闭，保持系统设置'
+    exit 0
+fi
+
 wait_boot || { log '等待开机完成超时，跳过'; exit 0; }
 
 SUPPORTED=$(refresh_supported)
-KNOWN=$(refresh_known)
-
-PIN_STATE=off
-[ -f "$PIN" ] && PIN_STATE=on
 
 TARGET_HZ=
 if [ -f "$TARGET" ]; then
@@ -151,26 +158,9 @@ if [ -f "$TARGET" ]; then
     fi
 fi
 
-# 没有保存过目标（首次开机）：取本机支持的最高档，直接解决「开机锁 60Hz」。
-# 读不到档位表时不要凭空猜最高档（可能给到这块屏根本不支持的 240Hz），
-# 改成沿用系统当前的刷新率——它至少是本机正在跑的值。
-if [ -z "$TARGET_HZ" ]; then
-    if [ "$KNOWN" = 1 ]; then
-        for TIER in $TIERS; do
-            case " $SUPPORTED " in *" $TIER "*) TARGET_HZ=$TIER;; esac
-        done
-        WHY="首次开机默认取最高档"
-    else
-        CUR=$(refresh_current)
-        case " $SUPPORTED " in *" $CUR "*) TARGET_HZ=$CUR;; esac
-        WHY="未读到档位表，沿用当前刷新率"
-    fi
-    [ -n "$TARGET_HZ" ] || { log '无法确定可用刷新率档位，跳过'; exit 0; }
-    PIN_STATE=on
-    printf '%s\n' "$TARGET_HZ" > "$TARGET" 2>/dev/null || log "保存目标 ${TARGET_HZ}Hz 失败"
-    : > "$PIN" 2>/dev/null || :
-    log "${WHY} ${TARGET_HZ}Hz"
-fi
+# 只有用户明确开启并保存过目标才接管；不再在首次开机自动抢最高档。
+[ -n "$TARGET_HZ" ] || { log '没有已保存且受支持的刷新率目标，保持系统设置'; exit 0; }
+PIN_STATE=on
 
 apply_rate "$TARGET_HZ" "$PIN_STATE" || log '首次应用失败'
 # 系统在解锁后的几秒内可能再次回落，补写两次

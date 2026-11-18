@@ -450,6 +450,8 @@ cmd_mode() {
         # 离开超频模式：恢复本次开机的频率基线（无基线则无事可做）
         [ -f "$BASELINE" ] && cmd_restore || :
     fi
+    sh "$MODULE/script/gpu_profile.sh" "$1" >/dev/null 2>&1 ||
+        log_write warn gpu 'GPU 分模式窗口应用失败，已保留当前节点值'
     printf 'ok\tmode\t%s\n' "$1"
 }
 cmd_tune() {
@@ -507,6 +509,7 @@ list_packages() {
 REFRESH_TIERS='30 48 60 72 90 120 144 165 180 240'
 REFRESH_TARGET="$RUNTIME_ROOT/refresh.txt"
 REFRESH_PIN="$RUNTIME_ROOT/refresh_pin"
+REFRESH_MANAGE="$RUNTIME_ROOT/refresh_manage"
 
 # 设备声明的刷新率（整数 Hz，升序、去重、空格分隔）。
 # 只读取固定系统命令的输出；一个 dump 里可能同时出现 fps= / refreshRate= /
@@ -586,8 +589,53 @@ refresh_target() {
     case "$RV_T" in ''|*[!0-9]*) return 0;; esac
     printf '%s' "$RV_T"
 }
+refresh_manage_state() {
+    RM_STATE=$(cat "$REFRESH_MANAGE" 2>/dev/null)
+    case "$RM_STATE" in on|off) printf '%s' "$RM_STATE"; return 0;; esac
+    # v1.5.0 升级兼容：旧版只要保存过目标就持续接管刷新率。
+    if [ -f "$REFRESH_TARGET" ] && [ ! -L "$REFRESH_TARGET" ]; then printf on; else printf off; fi
+}
+refresh_save_manage() {
+    [ ! -L "$REFRESH_MANAGE" ] || { err 'refresh manage state symlink refused'; return 1; }
+    printf '%s\n' "$1" > "$WORK/refresh_manage.new" || { err 'cannot stage refresh manage state'; return 1; }
+    cat "$WORK/refresh_manage.new" > "$REFRESH_MANAGE" || { err 'cannot save refresh manage state'; return 1; }
+}
 refresh_pin_state() {
-    if [ -f "$REFRESH_PIN" ]; then printf on; else printf off; fi
+    if [ "$(refresh_manage_state)" = on ] && [ -f "$REFRESH_PIN" ]; then printf on; else printf off; fi
+}
+refresh_restore_system() {
+    RR_ORIG="$RUNTIME_ROOT/refresh_orig.txt"
+    [ -f "$RR_ORIG" ] && [ ! -L "$RR_ORIG" ] || return 0
+    command -v settings >/dev/null 2>&1 || { err 'settings command unavailable'; return 1; }
+    RR_PEAK=$(awk -F '\t' 'NR==1{print $1}' "$RR_ORIG" 2>/dev/null)
+    RR_MIN=$(awk -F '\t' 'NR==1{print $2}' "$RR_ORIG" 2>/dev/null)
+    # 先解除模块钉住的下限，避免恢复较低 peak 时出现 min > peak。
+    settings delete system min_refresh_rate >/dev/null 2>&1 || { err 'cannot release min_refresh_rate'; return 1; }
+    case "$RR_PEAK" in ''|null) settings delete system peak_refresh_rate >/dev/null 2>&1;;
+        *[!0-9.]*) err 'invalid saved peak_refresh_rate'; return 1;;
+        *) settings put system peak_refresh_rate "$RR_PEAK" >/dev/null 2>&1 || { err 'cannot restore peak_refresh_rate'; return 1; };; esac
+    case "$RR_MIN" in ''|null) :;;
+        *[!0-9.]*) err 'invalid saved min_refresh_rate'; return 1;;
+        *) settings put system min_refresh_rate "$RR_MIN" >/dev/null 2>&1 || { err 'cannot restore min_refresh_rate'; return 1; };; esac
+    log_write info refresh '刷新率管理已关闭，已还原接管前的系统设置'
+}
+cmd_refresh_manage() {
+    RMA_STATE=$1
+    [ ! -L "$REFRESH_MANAGE" ] || { err 'refresh manage state symlink refused'; return 1; }
+    if [ "$RMA_STATE" = off ]; then
+        refresh_restore_system || return 1
+        refresh_save_manage off || return 1
+        rm -f "$REFRESH_PIN" 2>/dev/null || :
+        printf 'ok\trefresh_manage\toff\n'
+        return 0
+    fi
+    RMA_TARGET=$(refresh_target)
+    case "$RMA_TARGET" in ''|*[!0-9]*) RMA_TARGET=$(refresh_current);; esac
+    case "$RMA_TARGET" in ''|*[!0-9]*)
+        for RMA_HZ in $(refresh_supported); do RMA_TARGET=$RMA_HZ; done;; esac
+    case "$RMA_TARGET" in ''|*[!0-9]*) err 'cannot determine refresh target'; return 1;; esac
+    cmd_refresh "$RMA_TARGET" on || return 1
+    printf 'ok\trefresh_manage\ton\n'
 }
 # 写入系统刷新率：peak 决定上限，min 决定下限（下限钉死即「取消静止降频」）。
 # 不用 min>peak 的中间态：先写 peak，再写 min。
@@ -634,6 +682,7 @@ cmd_refresh() {
     cat "$WORK/refresh.new" > "$REFRESH_TARGET" || { err 'cannot save refresh target'; return 1; }
     if [ "$RH_PIN" = on ]; then : > "$REFRESH_PIN" || { err 'cannot save pin state'; return 1; }
     else rm -f "$REFRESH_PIN" || { err 'cannot clear pin state'; return 1; }; fi
+    refresh_save_manage on || return 1
     printf 'ok\trefresh\t%s\t%s\n' "$RH_HZ" "$RH_PIN"
 }
 
@@ -776,8 +825,8 @@ root_mode() {
     if [ -d /data/adb/magisk ] || [ -x /data/adb/magisk/magisk ]; then printf 'Magisk'; return 0; fi
     printf '未知'
 }
-# SUSFS 状态只读探测：本模块从不加载/卸载 .ko，也不写 kallsyms、kptr_restrict 或 /proc/susfs_*，
-# 这里只把「装没装 / 加载没加载」如实报出来，方便排查 LKM 版 SUSFS 的加载失败。
+# SUSFS 兼容探测代码仅保留供旧环境和后续适配；v1.6.0 的 status 不调用它。
+# 本模块从不加载/卸载 .ko，也不写 kallsyms、kptr_restrict 或 /proc/susfs_*。
 susfs_state() {
     if [ -e /proc/susfs_path ] || [ -d /sys/module/susfs_guard_lkm ]; then printf '已加载'; return 0; fi
     if [ -f /data/adb/modules/susfs_guard_lkm/module.prop ]; then printf '未加载（SUSFS Guard 已安装）'; return 0; fi
@@ -809,15 +858,12 @@ cmd_status() {
     printf 'info\trefresh\t%s\n' "${RT_RATE:-unknown}"
     printf 'info\trefresh_target\t%s\n' "${RT_TARGET:-none}"
     printf 'info\trefresh_pin\t%s\n' "$(refresh_pin_state)"
+    printf 'info\trefresh_manage\t%s\n' "$(refresh_manage_state)"
     printf 'info\trefresh_tiers\t%s\n' "$REFRESH_TIERS"
     printf 'info\trefresh_supported\t%s\n' "$RT_SUP"
     printf 'info\trefresh_known\t%s\n' "$([ -n "$RT_TABLE" ] && printf 1 || printf 0)"
-    SUSFS_ST=$(susfs_state)
-    printf 'info\tsusfs\t%s\n' "$SUSFS_ST"
+    # SUSFS 兼容探测函数保留供后续适配，但 v1.6.0 不再读取、上报或告警。
     printf 'info\troot\t%s\n' "$(root_mode)"
-    if [ "$SUSFS_ST" = '未加载（SUSFS Guard 已安装）' ]; then
-        log_once susfs-lkm warn susfs 'SUSFS Guard (LKM) 已安装但内核模块没有加载：请查看 /data/adb/modules/susfs_guard_lkm/load.log；本模块不加载任何 .ko，也不写 kallsyms、kptr_restrict 与 /proc/susfs_*，不会抢占它的加载接口'
-    fi
     # 读到异常状态时自动记一条（每开机一次，不随轮询刷屏）
     [ -n "$RT_TABLE" ] || log_once refresh-table warn refresh '未读到刷新率档位表：dumpsys display 与 SurfaceFlinger 都没有给出可用档位，已放开全部档位供尝试'
     [ -n "$RT_RATE" ] || log_once refresh-current warn refresh '读不到当前刷新率（SurfaceFlinger 与 peak_refresh_rate 都没有有效值）'
@@ -835,7 +881,7 @@ cmd_status() {
 }
 
 # 在任何特权文件操作之前先校验参数数量与基本语法。
-[ "$#" -gt 0 ] || fail 'usage: control.sh status|apps|rules|deviceinfo|logs|clearlog|logline LEVEL TAG MSG|restore|freq ID MIN MAX|rule PACKAGE MODE|mode MODE|tune on|off|refresh HZ on|off'
+[ "$#" -gt 0 ] || fail 'usage: control.sh status|apps|rules|deviceinfo|logs|clearlog|logline LEVEL TAG MSG|restore|freq ID MIN MAX|rule PACKAGE MODE|mode MODE|tune on|off|refresh HZ on|off|refresh_manage on|off'
 CMD=$1; shift
 case "$CMD:$#" in
     status:0|restore:0|apps:0|rules:0|deviceinfo:0|logs:0|clearlog:0) ;;
@@ -847,7 +893,7 @@ case "$CMD:$#" in
         is_freq "$2" && is_freq "$3" || fail 'invalid frequency';;
     rule:2) valid_package "$1" || fail 'invalid package selector'; [ "$2" = delete ] || valid_mode "$2" || fail 'invalid mode';;
     mode:1) valid_mode "$1" || fail 'invalid mode';;
-    tune:1) case "$1" in on|off) ;; *) fail 'invalid tune argument';; esac;;
+    tune:1|refresh_manage:1) case "$1" in on|off) ;; *) fail 'invalid switch argument';; esac;;
     refresh:2) is_uint "$1" || fail 'invalid refresh rate'
         case "$2" in on|off) ;; *) fail 'invalid pin argument';; esac;;
     *) fail 'invalid command or argument count';;
@@ -860,6 +906,7 @@ case "$CMD" in
     deviceinfo) cmd_deviceinfo;;
     logs) cmd_logs;; logline) cmd_logline "$@";; clearlog) cmd_clearlog;;
     rule) cmd_rule "$@";; mode) cmd_mode "$@";; tune) cmd_tune "$@";; refresh) cmd_refresh "$@";;
+    refresh_manage) cmd_refresh_manage "$@";;
 esac
 RC=$?
 [ "$RC" = 0 ] || err "command failed: $CMD"

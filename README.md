@@ -1,14 +1,14 @@
 # 南何ovo · 性能调度
 
-基于 [Uperf-Game-Turbo](https://github.com/yinwanxi/Uperf-Game-Turbo) 的 Android 性能调度模块（Magisk / KernelSU / APatch 通用可刷入 zip），自带一套纯本地的 WebUI：全局模式、分应用规则、CPU / GPU 频率区间、屏幕刷新率（含强制取消静止降频）、机型信息与自动运行日志。
+基于 [Uperf-Game-Turbo](https://github.com/yinwanxi/Uperf-Game-Turbo) 的 Android 性能调度模块（Magisk / KernelSU / APatch 通用可刷入 zip），自带一套纯本地的 WebUI：全局模式、分应用规则、CPU / GPU 频率区间、屏幕刷新率（带管理总开关，关闭时完全交还系统）、机型信息与自动运行日志。
 
 界面是 Miuix 观感的白卡 + 悬浮液态玻璃底栏，**不联网、不上传任何数据**。
 
 想直接拿文案去发布，看 [docs/模块介绍.md](docs/模块介绍.md)：一句话版 / 群公告短版 / 发布帖长版，含完整出处表与已知边界。
 
-- 版本：`v1.4.0`（versionCode `20261117`）
+- 版本：`v1.6.0`（versionCode `202611181`）
 - 模块 id：`nanhe_ovo`
-- 可刷入包：[`nanhe_ovo-v1.4.0-20261117.zip`](https://github.com/nanhe-ovo/nanhe_ovo-module/releases/download/v1.4.0/nanhe_ovo-v1.4.0-20261117.zip)（见 Release 页）
+- 可刷入包：[`nanhe_ovo-v1.6.0-20261118.zip`](https://github.com/nanhe-ovo/nanhe_ovo-module/releases/download/v1.6.0/nanhe_ovo-v1.6.0-20261118.zip)（见 Release 页）
 - 要求：**arm64** 设备（内置 uperf 与 busybox 只有 aarch64 版本）
 
 ![首页](docs/screenshots/ui-overview.png)
@@ -24,9 +24,10 @@
 
 ### 平台配置
 
-- 安装器按 `ro.board.platform` 选平台表，模块内带 75 份（`config/mt*.json` 等），覆盖骁龙 / 天玑 / Exynos / 麒麟 / Tensor。
+- 安装器按 `ro.board.platform` 选平台表，模块内带 **98 份配置（97 份平台表 + template）**，覆盖骁龙 / 天玑 / Exynos / 麒麟 / Tensor / 展锐。
 - v1.3.2 补上 **Dimensity 9400（mt6991 → `mtd9400.json`）**：4×A7xx / 3×X4 / 1×X925 三段功耗模型，presets 带 DDR 保底（3.2 / 2.667 / 5.5 GB/s），不再回退到没有功耗模型的 `template.json`。
 - v1.4.0 按全平台调度策略文档新增 7 份 **2026 新平台推测配置**：`mtd9600pro` / `mtd9600m` / `mtd9500s` / `mtd8500` / `sdm8e6` / `sdm8e6x` / `exynos2700`，功耗模型按 Uperf 方法论推算，`ro.board.platform` 新代号未公开前不参与自动匹配，真机可手动换用并在文档边界里声明。
+- v1.5.0 补齐 23 份 2020 年后存量推测表；v1.6.0 保持既有可用配置不变，只定向调整 `sdm8elite.json` 的低分组派活。
 - 回退模板时安装器会写一条 `warn config` 日志（面板「关于 → 运行日志」可见），说明「uperf 不会接管 CPU 频率」，避免把系统 DVFS 的锯齿误判成模块降频。降频排查过程见 [docs/降频分析与v1.3.2优化.md](docs/降频分析与v1.3.2优化.md)。
 - 三份原理与策略文档随包携带在 `module/docs/`：Uperf 运行原理、全平台调度策略速查、降频分析与优化说明。
 
@@ -40,9 +41,11 @@
 
 - 十档候选 `30 / 48 / 60 / 72 / 90 / 120 / 144 / 165 / 180 / 240`，但**只列出设备真正声明过的**：`dumpsys display` 与 `dumpsys SurfaceFlinger` 一起解析，认 `fps=`、`refreshRate=`、`renderFrameRate=`、`framerate=`、`mRefreshRate=`、`vsyncPeriod=`（纳秒换算）与 `1880x3008@120.0Hz` 这类写法。
 - 未声明档位：前端虚线置灰不可点，后端同样拒绝（`<HZ> Hz is not supported by this device`）。
-- 读不到档位表时不锁死：`status` 给 `refresh_known=0`，前端放开全部十档并提示，写入交由系统决定。
-- **强制取消静止降频**：同时钉 `peak_refresh_rate` 与 `min_refresh_rate`，画面静止、熄屏回来不会偷降 60Hz；关闭则删除下限。
-- 修复了「开机锁 60Hz」：开机按保存的目标值重写，读不到档位就沿用当前值并写日志。
+- 读不到档位表时不锁死：`status` 给 `refresh_known=0`，前端放开全部十档并提示「开启管理后可尝试」，写入交由系统决定。
+- **刷新率管理总开关（v1.6.0）**：默认关闭，关闭时模块不写系统刷新率、开机也不应用；开启后同时钉 `peak_refresh_rate` 与 `min_refresh_rate`，静止、熄屏回来不会偷降 60Hz。关闭开关会还原系统原值。
+- 修复「开机锁 60Hz」：总开关开启且目标受支持时按保存值重写并补写两次；新安装不再自动抢最高档，旧版有 `refresh.txt` 时兼容为开启。
+- **天玑 Mali GPU**：恢复内核 fast DVFS；按模式在真实 OPP 表上抬 `min_freq`（性能 75%、极速 85%、超频 95%），不改 `max_freq`，省电 / 均衡恢复开机快照。
+- **骁龙 8 Elite 低分组**：开启 `sdm8elite.json` 的 sched，`0-1` 作为轻载组，音频 / 网络 / 解码线程定向派活并由 util 升频。
 
 ### 系统调优
 
@@ -59,10 +62,10 @@
 - 同一开机内同类诊断只记一次（按 boot_id 去重）；「清空日志」会连去重标记一起清掉。
 - **只写本机，不上传。**
 
-### Root 形态与 SUSFS 状态
+### Root 形态与 SUSFS
 
 - 首页状态卡标签自动显示 `LKM` / `GKI` / `APatch` / `Magisk`：KernelSU 看 `/sys/module/kernelsu` 是否存在来区分 LKM 与内核内置（GKI）；读不到就是「未知」，不硬编码。
-- `status` 另输出 `info susfs`：`已加载` / `未加载（SUSFS Guard 已安装）` / `未安装`；已装未加载时自动记一条 warn，指向 `/data/adb/modules/susfs_guard_lkm/load.log`。
+- v1.6.0 起不再输出 `info susfs`、不在 UI 展示或写 SUSFS 告警；兼容探测函数保留但不调用。
 - 本模块**不加载、不卸载任何内核模块**，也不写 `kallsyms`、`kptr_restrict`、`/proc/susfs_*`。
 
 ### 界面
@@ -86,7 +89,7 @@
 ## 安装
 
 1. 确认设备为 **arm64**（非 arm64 会在安装器里被拒绝）。
-2. 管理器刷入 `nanhe_ovo-v1.4.0-20261117.zip`：Magisk → 模块 → 从本地安装；KernelSU / APatch → 模块 → 安装。
+2. 管理器刷入 `nanhe_ovo-v1.6.0-20261118.zip`：Magisk → 模块 → 从本地安装；KernelSU / APatch → 模块 → 安装。
 3. 重启。
 4. 打开面板：KernelSU / APatch 管理器 → 模块 → 南何ovo → 打开 WebUI；Magisk 本体没有模块 WebUI，可用 KsuWebUIStandalone 等工具打开 `/data/adb/modules/nanhe_ovo/webroot/index.html`。
 
@@ -100,8 +103,8 @@ python tools\build.py
 
 产物：
 
-- `dist/nanhe_ovo-v1.4.0-20261117.zip` —— 可刷入模块
-- `dist/nanhe_ovo-src-v1.4.0.zip` —— 源码包
+- `dist/nanhe_ovo-v1.6.0-20261118.zip` —— 可刷入模块
+- `dist/nanhe_ovo-src-v1.6.0.zip` —— 源码包
 
 构建校验：脚本 LF 换行、无 BOM、`#!/system/bin/sh` 首行、zip 内脚本 755、`module.prop` 必填字段；文本写入 zip 时统一转 LF。
 
@@ -120,20 +123,20 @@ dist/         构建产物（不入库，见 Releases）
 后端（Ubuntu 22.04，bash + dash）：
 
 ```sh
-bash tests/shell/run-tests.sh     # 207 PASS / 0 FAIL
+bash tests/shell/run-tests.sh     # 全部通过（含 GPU / 刷新率总开关 / 8 Elite 断言）
 ```
 
 前端（Windows，Node 22 + 无头 Edge + CDP）：
 
 ```powershell
 node tests\core.test.cjs         # 命令构造 / 拒绝 / 解析 / 换算 / 桥接
-node tests\render.cjs            # 59 项断言 + 5 张截图
+node tests\render.cjs            # 60 项断言 + 截图
 ```
 
 ## 边界（写清楚，免得误会）
 
-1. 不是超频 / 降压 / 改电压工具，只写设备已暴露的频率与刷新率参数。
-2. 频率区间不持久化；刷新率有开机应用，但依赖系统设置项被接受。
+1. 不是超频 / 降压 / 改电压工具，只写设备已暴露的频率与刷新率参数；GPU 只抬下限、不突破出厂 OPP。
+2. 频率区间不持久化；刷新率仅在「刷新率管理」开启时由开机脚本应用，关闭则完全交还系统。
 3. 液态玻璃是 CSS 近似（模糊 + 饱和度 + 边缘色散 + 高光），做不到 Backdrop `lens()` 的逐像素折射。
 4. LKM / GKI 判断依据 `/sys/module/kernelsu` 是否存在，属启发式；页面同时显示完整值供比对。
 5. APatch / Magisk 只按 `/data/adb/ap`、`/data/adb/magisk` 目录识别，不解析版本号。

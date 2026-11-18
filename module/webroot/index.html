@@ -53,7 +53,7 @@
             <div class="current-value"><span id="refresh-current">—</span><small>当前刷新率</small></div>
           </div>
           <div id="refresh-tiers" class="refresh-tiers" role="group" aria-label="刷新率档位"></div>
-          <div class="switch-row inside"><div><h2>强制取消静止降频</h2><p>开启后同时写入刷新率上限与下限，画面静止或熄屏回来时系统不会偷偷回落到 60Hz；开机也会按此值重写。</p></div><button id="pin-switch" class="switch" type="button" role="switch" aria-checked="false" aria-label="强制取消静止降频" disabled></button></div>
+          <div class="switch-row inside"><div><h2>刷新率管理</h2><p>开启后由模块固定所选档位，同时写入上限与下限并在开机时重新应用；关闭后还原接管前的系统设置，刷新率完全交给系统。</p></div><button id="pin-switch" class="switch" type="button" role="switch" aria-checked="false" aria-label="刷新率管理总开关" disabled></button></div>
           <p class="list-note" id="refresh-note">正在读取设备刷新率档位…</p>
         </article>
         <article class="card restore-card"><div><h2>恢复开机频率</h2><p>回到本次开机的原始频率边界，撤销手动限制。</p></div><button id="restore" class="danger-button" data-write type="button" disabled>恢复默认</button></article>

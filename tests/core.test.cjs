@@ -16,22 +16,14 @@ assert.strictEqual(C.command('tune', ['off']), "sh '/data/adb/modules/nanhe_ovo/
 assert.strictEqual(C.command('freq', ['cpu-policy0', '300000', '1800000']), "sh '/data/adb/modules/nanhe_ovo/script/control.sh' freq 'cpu-policy0' '300000' '1800000'");
 assert.strictEqual(C.command('refresh', ['120', 'on']), "sh '/data/adb/modules/nanhe_ovo/script/control.sh' refresh '120' on");
 assert.strictEqual(C.command('refresh', ['60', 'off']), "sh '/data/adb/modules/nanhe_ovo/script/control.sh' refresh '60' off");
+assert.strictEqual(C.command('refresh_manage', ['on']), "sh '/data/adb/modules/nanhe_ovo/script/control.sh' refresh_manage on");
+assert.strictEqual(C.command('refresh_manage', ['off']), "sh '/data/adb/modules/nanhe_ovo/script/control.sh' refresh_manage off");
 assert.strictEqual(C.command('deviceinfo'), "sh '/data/adb/modules/nanhe_ovo/script/control.sh' deviceinfo");
 assert.strictEqual(C.command('thread', ['on']), "sh '/data/adb/modules/nanhe_ovo/script/control.sh' thread on");
 assert.strictEqual(C.command('thread', ['off']), "sh '/data/adb/modules/nanhe_ovo/script/control.sh' thread off");
 assert.strictEqual(C.command('threadrule', ['com.example.game', 'game']), "sh '/data/adb/modules/nanhe_ovo/script/control.sh' threadrule 'com.example.game' 'game'");
 assert.strictEqual(C.command('threadrule', ['com.example.game', 'delete']), "sh '/data/adb/modules/nanhe_ovo/script/control.sh' threadrule 'com.example.game' 'delete'");
 assert.strictEqual(C.command('threadrules'), "sh '/data/adb/modules/nanhe_ovo/script/control.sh' threadrules");
-
-// 云更新命令
-assert.strictEqual(C.command('update', ['check']), "sh '/data/adb/modules/nanhe_ovo/script/control.sh' update check");
-assert.strictEqual(C.command('update', ['download']), "sh '/data/adb/modules/nanhe_ovo/script/control.sh' update download");
-assert.strictEqual(C.command('update', ['apply']), "sh '/data/adb/modules/nanhe_ovo/script/control.sh' update apply");
-for (const fn of [
-  () => C.command('update', ['hack']),
-  () => C.command('update', []),
-  () => C.command('update', ['check', 'x']),
-]) assert.throws(fn, /拒绝/);
 
 // 参数拒绝：注入、越权、越界
 const rejects = [
@@ -51,6 +43,7 @@ const rejects = [
   () => C.command('refresh', ['0', 'on']),
   () => C.command('refresh', ['480', 'on']),
   () => C.command('refresh', ['120']),
+  () => C.command('refresh_manage', ['maybe']),
   () => C.command('thread', ['maybe']),
   () => C.command('threadrule', ['bad pkg', 'game']),
   () => C.command('threadrule', ['com.example.game', 'turbo']),
@@ -101,14 +94,19 @@ assert.strictEqual(parsed.devices.length, 2);
 assert.deepStrictEqual(parsed.devices[0].frequencies, [300000, 600000, 1200000, 1800000]);
 assert.strictEqual(parsed.devices[1].unit, 'Hz');
 
-// 非法状态必须抛出，而不是渲染出错数据
-for (const bad of [
-  text.replace('300000\t1800000\t1200000', '1800000\t300000\t1200000'),
-  text.replace('cpu-policy0', 'cpu-policy0;rm'),
-  'device\tcpu-policy0\tCPU\thtml\t1\t2\t3\t4',
-  text + '\ndevice\tcpu-policy0\tdup\tkHz\t1\t2\t3\t4',
-  text.replace('300000 600000 1200000 1800000', '300000 600000 abc'),
-]) assert.throws(() => C.parseStatus(bad));
+// 单行频率读不到 / 非法时跳过该行，不能让一条坏数据拒收整包状态
+assert.strictEqual(C.parseStatus(text.replace('300000\t1800000\t1200000', '1800000\t300000\t1200000')).devices.length, 1);
+assert.strictEqual(C.parseStatus(text.replace('cpu-policy0', 'cpu-policy0;rm')).devices.length, 1);
+assert.strictEqual(C.parseStatus('device\tcpu-policy0\tCPU\thtml\t1\t2\t3\t4').devices.length, 0);
+assert.strictEqual(C.parseStatus(text + '\ndevice\tcpu-policy0\tdup\tkHz\t1\t2\t3\t4').devices.length, 2);
+assert.strictEqual(C.parseStatus(text.replace('300000 600000 1200000 1800000', '300000 600000 abc')).devices.length, 1);
+// 当前频率读不到时 min/max 仍保留，current 置 null
+const noCurrent = C.parseStatus([
+  'info\tmode\tbalance',
+  'device\tcpu-policy0\tCPU 策略 0\tkHz\t300000\t1800000\tunknown\t300000 600000 1200000 1800000',
+  'ok\tstatus',
+].join('\n'));
+assert.strictEqual(noCurrent.devices[0].current, null);
 
 // 规则与应用解析
 assert.deepStrictEqual(plain(C.parseRules('# c\n* balance\n- powersave\ncom.example.game performance')), {
@@ -125,7 +123,12 @@ assert.deepStrictEqual(plain(C.parseThreadRules(
   '# nanhe_threadrule pkg=bad pkg preset=game\n'
 )), { 'com.example.game': 'game', 'com.example.reader': 'ui' });
 assert.deepStrictEqual(plain(C.parseThreadRules('')), {});
-assert.deepStrictEqual(C.parseApps('com.b.app\ncom.a.app\ncom.a.app\njunk\n'), ['com.a.app', 'com.b.app']);
+assert.deepStrictEqual(C.parseApps('com.b.app\ncom.a.app\ncom.a.app\njunk\n'), [
+  { pkg: 'com.a.app', game: false }, { pkg: 'com.b.app', game: false },
+]);
+assert.deepStrictEqual(C.parseApps('com.a.app\tgame\ncom.b.app'), [
+  { pkg: 'com.a.app', game: true }, { pkg: 'com.b.app', game: false },
+]);
 
 // 频率换算与区间校验
 assert.strictEqual(C.mhz(1800000, 'kHz'), '1,800 MHz');
@@ -151,18 +154,6 @@ assert.deepStrictEqual(dinfo.map(r => [r.section, r.label, r.value]), [
   ['battery', '技术', 'Li-poly'],
 ]);
 assert.deepStrictEqual(C.numbers('30 48 60 120 abc 0 -1 7.5'), [30, 48, 60, 120]);
-
-// 云更新状态解析：状态枚举兜底 none，其余字段原样保留
-const upd = C.parseUpdateStatus([
-  'info\tupdate_state\tavailable',
-  'info\tupdate_version\tv1.8.0',
-  'info\tupdate_code\t202611192',
-  'info\tupdate_size\t2489442',
-  'ok\tupdate status',
-].join('\n'));
-assert.deepStrictEqual(upd, { state: 'available', version: 'v1.8.0', code: '202611192', size: '2489442' });
-assert.strictEqual(C.parseUpdateStatus('info\tupdate_state\tbogus\n').state, 'none');
-assert.strictEqual(C.parseUpdateStatus('').state, 'none');
 
 // 桥接：成功、失败、超时、缺桥接
 (async () => {

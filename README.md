@@ -71,12 +71,10 @@
 - 同一开机内同类诊断只记一次（按 boot_id 去重）；「清空日志」会连去重标记一起清掉。
 - **只写本机，不上传。**
 
-### 云更新（v1.8.0）
+### 更新通道（v1.9.0）
 
-- 关于页可直接检查本仓库最新 Release：按 `module.prop` 的 `versionCode`（纯数字）与远端比较，展示更新日志；状态分 `available / uptodate / downloaded / pending / unknown / failed`。
-- 下载地址只允许 GitHub Release 资产与 `*.githubusercontent.com` CDN，其余域名在下载阶段拦截；下载后核对文件大小与 SHA256（`sha256:<64hex>`），不符即删除半成品，不留残包。
-- 安装方式为「暂存包 + 开机落地」：校验通过后写入待应用标记，下次开机由 `update_apply.sh` 解压覆盖模块目录；运行中的脚本与二进制先保持原状，避免半更新状态。本机配置（`/sdcard/Android/yc/uperf` 与线程规则）不在模块目录内，升级不会被覆盖。
-- 检查 / 下载有超时控制；网络不可达只记 `failed` 状态，不打断面板操作。
+- 版本更新由 KernelSU / APatch 等管理器的模块仓库统一推送：`module.prop` 内的 `updateJson` 指向仓库根目录的 `update.json`（版本、versionCode、模块包地址、更新日志），管理器在模块页检测到新版本后提示安装；面板内不再联网检查、下载更新包。
+- 仓库根目录另附 `module.yaml`，供模块注册表（Registry）收录；Release 资产只保留一个模块 zip，源码包不参与注册表匹配。
 
 ### Root 形态与 SUSFS
 
@@ -156,7 +154,7 @@ node tests\render.cjs            # 60 项断言 + 截图
 3. 液态玻璃是 CSS 近似（模糊 + 饱和度 + 边缘色散 + 高光），做不到 Backdrop `lens()` 的逐像素折射。
 4. LKM / GKI 判断依据 `/sys/module/kernelsu` 是否存在，属启发式；页面同时显示完整值供比对。
 5. APatch / Magisk 只按 `/data/adb/ap`、`/data/adb/magisk` 目录识别，不解析版本号。
-6. 日志最多 200 行、只在本机；除云更新主动检查 GitHub Release 外，面板不联网、不上传设备数据。
+6. 日志最多 200 行、只在本机；面板不联网、不上传设备数据，更新提示走管理器模块仓库通道。
 7. 线程引擎只做静态放置（cpuset 分组），不改频率与优先级；双簇 / 单簇平台语义核可能解析为空集，相关规则被跳过；引擎起不来只影响线程调度，不影响 uperf。
 8. 未在全部机型验证；当前为 Android 17 / MT8799 真机对照 + Ubuntu 容器后端测试 + Windows 无头 Edge 渲染测试。
 

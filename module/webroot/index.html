@@ -72,15 +72,8 @@
       <section id="page-about" class="page" aria-label="关于性能调度" hidden>
         <article class="card about-brand"><span class="brand-icon large">N<span>o</span></span><h2>性能调度</h2><p>性能与日常之间，找到你的节奏。</p><span id="about-version" class="pill">v-</span></article>
         <article class="card update-card">
-          <div class="section-title inside"><h2>版本更新</h2><span id="update-pill" class="pill">未检查</span></div>
-          <p class="list-note" id="update-note">尚未检查更新。检查会访问 GitHub Release，下载后校验大小与 SHA256，重启时落地，不覆盖本机已保存的调度与线程规则。</p>
-          <pre id="update-changelog" class="update-changelog" hidden></pre>
-          <div class="update-actions">
-            <button id="update-check" class="secondary-button" type="button">检查更新</button>
-            <button id="update-download" class="primary-button" type="button" hidden>下载更新包</button>
-            <button id="update-apply" class="primary-button" type="button" hidden>重启并应用</button>
-            <button id="update-cancel" class="secondary-button" type="button" hidden>取消更新</button>
-          </div>
+          <div class="section-title inside"><h2>版本更新</h2><span class="pill">管理器推送</span></div>
+          <p class="list-note">更新由 KernelSU / APatch 等管理器的模块仓库统一提示：在管理器模块页查看新版本并安装，本面板内不联网检查、不下载更新包。</p>
         </article>
         <div class="section-title"><h2>机型与系统</h2><span>只读采集</span></div>
         <div id="device-info" class="device-info"></div>
@@ -103,7 +96,7 @@
           <h2>线程引擎来源</h2>
           <p>线程调度引擎来自 <strong>AppOptR</strong>（作者 SutoLiu，GPL-3.0）：按本机拓扑实时解析 e-core / p-core / hp-core 语义核，进程创建与线程改名即时生效，内核无 BTF 时自动回退轮询模式。出处：<a href="https://gitee.com/sutoliu/AppOptR" target="_blank" rel="noopener noreferrer">gitee.com/sutoliu/AppOptR ↗</a>，GPL-3.0 许可证文本随模块分发（<code>appopt/LICENSE-GPL3.txt</code>）。</p>
           <h2>本项目</h2>
-          <p>源码与版本更新发布在 <a href="https://github.com/nanhe-ovo/nanhe_ovo-module" target="_blank" rel="noopener noreferrer">github.com/nanhe-ovo/nanhe_ovo-module ↗</a>。</p>
+          <p>源码发布在 <a href="https://github.com/nanhe-ovo/nanhe_ovo-module" target="_blank" rel="noopener noreferrer">github.com/nanhe-ovo/nanhe_ovo-module ↗</a>；版本更新由管理器模块仓库统一推送。</p>
           <h2>管理器与权限</h2>
           <p>需要支持模块 WebUI 且提供 KernelSU 官方 callback 执行桥接的管理器（KernelSU / APatch 等），并授予 Root。Magisk 本体没有模块 WebUI，可用 KsuWebUIStandalone 一类工具打开同一页面。Root 不可用时只展示只读演示，绝不伪造写入成功。</p>
           <h2>能力与安全边界</h2>

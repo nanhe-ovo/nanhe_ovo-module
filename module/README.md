@@ -199,7 +199,7 @@ nanhe_ovo/
 本模块的改动部分：
 
 - 新增 `script/control.sh`（WebUI 后端）与 `webroot/` 全套面板；
-- v1.8.0 管理器内云更新：`script/libupdate.sh`（检查 Release、versionCode 比较、域名白名单、大小与 SHA256 校验、暂存元数据）+ `script/update_apply.sh`（开机落地覆盖模块目录）；后端 `update check|status|changelog|download|apply|cancel` 命令，关于页更新卡片；本机配置不随升级覆盖；
+- v1.9.0 更新通道改为管理器模块仓库：`module.prop` 的 `updateJson` 指向仓库 `update.json`，由 KernelSU / APatch 等管理器在模块页提示更新；移除面板内联网检查、下载与开机落地脚本；
 - v1.7.0 集成 AppOptR 线程引擎（GPL-3.0，出处与许可随包标注）：五档线程规则（`appopt/appopt_*.conf`）、`script/libthread.sh` + `script/thread_svc.sh`、后端 `thread` / `threadrule` / `threadrules` 命令、首页线程开关、应用页线程预设、crazy 档 core_ctl 保核与恢复、安装器引擎校验、卸载清理；
 - 新增 `customize.sh`（平台配置匹配 + `template.json` 兜底 + 冲突提示）；
 - `initsvc.sh` 增加系统调优开关与 `/data/powercfg.sh` 占用保护；

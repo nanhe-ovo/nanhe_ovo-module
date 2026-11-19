@@ -1,0 +1,13 @@
+id: nanhe_ovo
+name: 南何ovo
+version: v1.9.0
+versionCode: 202611201
+author: 南何ovo
+description: 基于 Uperf-Game-Turbo 的性能调度模块：五种全局性能模式、分应用调度、CPU/GPU 频率区间、刷新率管理与 AppOptR 线程调度；应用页第三方应用枚举，游戏置顶。
+license: Apache-2.0
+homepage: https://github.com/nanhe-ovo/nanhe_ovo-module
+source: https://github.com/nanhe-ovo/nanhe_ovo-module
+readme: README.md
+changelog: docs/CHANGELOG.md
+release:
+  assetPattern: ^nanhe_ovo-v[^-].*\.zip$

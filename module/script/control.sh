@@ -14,7 +14,6 @@
 #   deviceinfo                      机型与系统信息（只读，供关于页展示）
 #   logs / clearlog                 读取 / 清空运行日志
 #   logline LEVEL TAG MESSAGE       由页面写入一条日志（前端发现的问题自动记录）
-#   update check|status|changelog|download|apply|cancel   云更新：检查 / 缓存状态 / 日志 / 下载 / 暂存应用 / 取消
 
 PATH=/system/bin:/system/xbin
 export PATH
@@ -31,7 +30,6 @@ LOG_MAX=200
 TUNE_FLAG=/data/adb/nanhe_ovo/tune_disabled
 MODULE=/data/adb/modules/nanhe_ovo
 . "$MODULE/script/libthread.sh"
-. "$MODULE/script/libupdate.sh"
 UPERF=/sdcard/Android/yc/uperf
 LOCKED=0
 TX_ACTIVE=0
@@ -153,7 +151,7 @@ cleanup() {
         rm -f "$WORK"/* 2>/dev/null
         rmdir "$WORK" 2>/dev/null
     fi
-    if [ "$LOCKED" = 1 ]; then rmdir "$LOCK" 2>/dev/null; fi
+    if [ "$LOCKED" = 1 ]; then rm -rf "$LOCK" 2>/dev/null; fi
 }
 trap 'cleanup' 0
 trap 'err "interrupted"; exit 1' 1 2 15
@@ -171,8 +169,17 @@ init() {
         chmod 700 "$P" || fail 'cannot secure runtime directory'
     done
     LOCK="$RUNTIME/lock.$BOOT"
+    # 残留锁：上次后端被强杀（OOM / 桥接断开）时 cleanup trap 没跑到。
+    # 锁内记录 PID，进程已不在就清理后接管；仍在运行才判 busy。
+    if [ -d "$LOCK" ]; then
+        OLD_PID=$(cat "$LOCK/pid" 2>/dev/null)
+        if [ -z "$OLD_PID" ] || ! kill -0 "$OLD_PID" 2>/dev/null; then
+            rm -rf "$LOCK" 2>/dev/null || fail 'cannot clear stale lock'
+        fi
+    fi
     mkdir "$LOCK" 2>/dev/null || fail 'backend busy'
     LOCKED=1
+    printf '%s' "$$" > "$LOCK/pid" 2>/dev/null || :
     WORK="$RUNTIME/work.$$"
     mkdir "$WORK" || fail 'cannot create private work directory'
     BASELINE="$RUNTIME/baseline.$BOOT.tsv"
@@ -237,7 +244,8 @@ check_pair() {
     case " $TABLE " in *" $2 "*) ;; *) err "$DEVICE_ID: maximum is not in frequency table"; return 1;; esac
 }
 snapshot() {
-    # 在第一次改动频率之前，一次性记录当时可读的全部节点
+    # 在第一次改动频率之前，一次性记录当时可读的全部节点；
+    # 节点只读 / 读不到时跳过该设备，整表为空也不报错（restore 提示不可用）。
     [ ! -L "$BASELINE" ] || fail 'baseline symlink refused'
     if [ -f "$BASELINE" ]; then return 0; fi
     : > "$WORK/baseline" || fail 'cannot prepare baseline'
@@ -248,7 +256,7 @@ snapshot() {
         le "$SS_MIN" "$SS_MAX" || continue
         printf '%s\t%s\t%s\t%s\n' "$SS_ID" "$SS_PATH" "$SS_MIN" "$SS_MAX" >> "$WORK/baseline" || fail 'baseline write failed'
     done < "$WORK/devices"
-    [ -s "$WORK/baseline" ] || fail 'no readable baseline devices'
+    [ -s "$WORK/baseline" ] || return 0
     mv "$WORK/baseline" "$BASELINE" || fail 'baseline commit failed'
 }
 ensure_baseline_device() {
@@ -435,6 +443,7 @@ apply_crazy_boost() {
             fi
         else
             BL_MSG=$(log_sane "$(sed 's/^[^:]*: *//' "$WORK/boost.err" | head -n 1)")
+            [ -n "$BL_MSG" ] || BL_MSG='写入被内核或 SELinux 拒绝，未返回错误详情'
             case "$BL_MSG" in
                 *"Permission denied"*) log_write warn boost "$BL_ID: 上限节点被内核/SELinux 设为只读，无法推高（已跳过）";;
                 *"No such file"*|*"not exist"*) log_write warn boost "$BL_ID: 频率节点不存在，已跳过";;
@@ -501,26 +510,46 @@ filter_pkgs() {
     awk '/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$/ && !seen[$0]++'
 }
 
+# 游戏标记：包名命中内置名单时在第二列加 `game`，供前端置顶展示。
+# 名单来自 Uperf-Game-Turbo 的 performance 绑定（Apache-2.0），评测工具不列入。
+GAME_LIST="$MODULE/game.list"
+game_tag() {
+    if [ -f "$GAME_LIST" ] && [ -r "$GAME_LIST" ]; then
+        awk 'NR==FNR {
+            line=$0; sub(/[ \t#].*/, "", line)
+            if (line != "") g[line]=1
+            next
+        }
+        ($1 in g) { print $1 "\tgame"; next }
+        { print $1 }' "$GAME_LIST" -
+    else
+        cat
+    fi
+}
+
 # 包名枚举：各 ROM / 各管理器环境下 pm、cmd 的可用性并不一致
 # （HyperOS 上 root shell 里 `pm list packages` 可能直接退出 1）。
 # 逐级降级，任何一级成功即返回；全部失败也只告警，不中断命令。
+# 应用页只展示第三方应用（-3），系统应用由系统自身管理，不在面板里暴露。
 list_packages() {
     LP_OUT="$WORK/packages"
-    for LP_TRY in 'pm list packages' 'pm list packages -3' 'cmd package list packages' 'pm list packages -u'; do
+    for LP_TRY in 'pm list packages -3' 'pm list packages' 'cmd package list packages -3' 'cmd package list packages'; do
         # 有意让 $LP_TRY 按空格拆成命令与参数
         if $LP_TRY > "$LP_OUT" 2>/dev/null && [ -s "$LP_OUT" ]; then
-            sed -n 's/^package://p' "$LP_OUT" | filter_pkgs
+            sed -n 's/^package://p' "$LP_OUT" | filter_pkgs | game_tag
             return 0
         fi
     done
-    # 兜底一：系统包清单（root 可读），每行首列即包名
+    # 兜底一：系统包清单（root 可读），每行首列即包名；系统应用（apk 在
+    # /system /product /vendor /apex 下）由系统自身管理，不在面板里暴露。
+    # 这条路径只在 pm 不可用时启用。
     if [ -f /data/system/packages.list ] && [ -s /data/system/packages.list ]; then
-        awk 'NF >= 1 {print $1}' /data/system/packages.list 2>/dev/null | filter_pkgs
+        awk 'index($0, "/system/")==0 && index($0, "/product/")==0 && index($0, "/vendor/")==0 && index($0, "/apex/")==0 {print $1}' /data/system/packages.list 2>/dev/null | filter_pkgs | game_tag
         return 0
     fi
     # 兜底二：dumpsys package
     if command -v dumpsys >/dev/null 2>&1 && dumpsys package > "$LP_OUT" 2>/dev/null && [ -s "$LP_OUT" ]; then
-        sed -n 's/^ *Package \[\([^]]*\)\].*/\1/p' "$LP_OUT" | filter_pkgs
+        sed -n 's/^ *Package \[\([^]]*\)\].*/\1/p' "$LP_OUT" | filter_pkgs | game_tag
         return 0
     fi
     err 'package enumeration unavailable; app list left empty'
@@ -913,19 +942,11 @@ cmd_threadrule() {
     thread_gen_conf "$TH_CUR" || { err 'thread config regenerate failed'; return 1; }
     printf 'ok\tthreadrule\t%s\t%s\n' "$1" "$2"
 }
-cmd_update() {
-    case "$1" in
-        check) cmd_update_check;;
-        status) cmd_update_status;;
-        changelog) cmd_update_changelog;;
-        download) cmd_update_download;;
-        apply) cmd_update_apply;;
-        cancel) cmd_update_cancel;;
-        *) err 'invalid update subcommand'; return 1;;
-    esac
-}
 cmd_status() {
     discover
+    # 首次读取状态时尽力落一份开机基线：节点可读就记录，只读/读不到则跳过，
+    # 不再要求先手动改过频率才有基线；失败不影响状态读取。
+    snapshot || :
     printf 'info\tboot_id\t%s\n' "$BOOT"
     if [ -f "$BASELINE" ] && [ ! -L "$BASELINE" ]; then BS=可用; else BS=无; fi
     printf 'info\tbaseline\t%s\n' "$BS"
@@ -957,11 +978,6 @@ cmd_status() {
     printf 'info\trefresh_tiers\t%s\n' "$REFRESH_TIERS"
     printf 'info\trefresh_supported\t%s\n' "$RT_SUP"
     printf 'info\trefresh_known\t%s\n' "$([ -n "$RT_TABLE" ] && printf 1 || printf 0)"
-    # 云更新状态只回读缓存（status 轮询不联网）；检查动作由前端单独触发 update check。
-    US_CACHED=$(update_meta_get state)
-    case "$US_CACHED" in available|uptodate|downloaded|pending|failed|unknown) ;; *) US_CACHED=none;; esac
-    printf 'info\tupdate_state\t%s\n' "$US_CACHED"
-    printf 'info\tupdate_version\t%s\n' "$(update_meta_get version)"
     # SUSFS 兼容探测函数保留供后续适配，但 v1.6.0 不再读取、上报或告警。
     printf 'info\troot\t%s\n' "$(root_mode)"
     # 读到异常状态时自动记一条（每开机一次，不随轮询刷屏）
@@ -970,7 +986,7 @@ cmd_status() {
     [ "$BS" = 可用 ] || log_once baseline warn boot '本次开机没有生成频率基线，restore 将不可用'
     [ -f "$UPERF/uperf.json" ] || log_once uperf-config warn config '没有找到 uperf.json，模式与应用规则不可用'
     while IFS="$(printf '\t')" read -r ST_ID ST_PATH ST_LABEL ST_UNIT; do
-        load_device "$ST_ID" || return 1
+        load_device "$ST_ID" || continue
         ST_MIN=$(read_num "$DEVICE_PATH/$MIN_NODE") || ST_MIN=unknown
         ST_MAX=$(read_num "$DEVICE_PATH/$MAX_NODE") || ST_MAX=unknown
         case "$DEVICE_ID" in cpu-*) ST_CUR=$(read_num "$DEVICE_PATH/scaling_cur_freq") || ST_CUR=unknown;;
@@ -981,11 +997,10 @@ cmd_status() {
 }
 
 # 在任何特权文件操作之前先校验参数数量与基本语法。
-[ "$#" -gt 0 ] || fail 'usage: control.sh status|apps|rules|threadrules|deviceinfo|logs|clearlog|logline LEVEL TAG MSG|restore|freq ID MIN MAX|rule PACKAGE MODE|threadrule PACKAGE PRESET|thread on|off|mode MODE|tune on|off|refresh HZ on|off|refresh_manage on|off|update check|status|changelog|download|apply|cancel'
+[ "$#" -gt 0 ] || fail 'usage: control.sh status|apps|rules|threadrules|deviceinfo|logs|clearlog|logline LEVEL TAG MSG|restore|freq ID MIN MAX|rule PACKAGE MODE|threadrule PACKAGE PRESET|thread on|off|mode MODE|tune on|off|refresh HZ on|off|refresh_manage on|off'
 CMD=$1; shift
 case "$CMD:$#" in
     status:0|restore:0|apps:0|rules:0|threadrules:0|deviceinfo:0|logs:0|clearlog:0) ;;
-    update:1) case "$1" in check|status|changelog|download|apply|cancel) ;; *) fail 'invalid update subcommand';; esac;;
     thread:1) case "$1" in on|off) ;; *) fail 'invalid thread switch';; esac;;
     threadrule:2) valid_package "$1" || fail 'invalid package selector'
         valid_thread_preset "$2" || fail 'invalid thread preset';;
@@ -1007,13 +1022,12 @@ case "$CMD" in
     status) cmd_status;; freq) cmd_freq "$@";; restore) cmd_restore;;
     apps) list_packages;;
     rules) [ -f "$UPERF/perapp_powermode.txt" ] || fail 'rules file missing'; cat "$UPERF/perapp_powermode.txt";;
-    threadrules) [ -f "$THREAD_USER" ] && cat "$THREAD_USER";;
+    threadrules) if [ -f "$THREAD_USER" ] && [ ! -L "$THREAD_USER" ]; then cat "$THREAD_USER"; fi;;
     thread) cmd_thread "$@";; threadrule) cmd_threadrule "$@";;
     deviceinfo) cmd_deviceinfo;;
     logs) cmd_logs;; logline) cmd_logline "$@";; clearlog) cmd_clearlog;;
     rule) cmd_rule "$@";; mode) cmd_mode "$@";; tune) cmd_tune "$@";; refresh) cmd_refresh "$@";;
     refresh_manage) cmd_refresh_manage "$@";;
-    update) cmd_update "$@";;
 esac
 RC=$?
 [ "$RC" = 0 ] || err "command failed: $CMD"

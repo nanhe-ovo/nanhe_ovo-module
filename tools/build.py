@@ -9,9 +9,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 MODULE = ROOT / "module"
 DIST = ROOT / "dist"
-STAMP = (2026, 11, 19, 0, 0, 0)
-VERSION = "v1.8.0"
-BUILD = "20261119"
+STAMP = (2026, 11, 20, 0, 0, 0)
+VERSION = "v1.9.0"
+BUILD = "20261120"
 ZIP_NAME = f"nanhe_ovo-{VERSION}-{BUILD}.zip"
 SRC_NAME = f"nanhe_ovo-src-{VERSION}.zip"
 
@@ -127,7 +127,7 @@ def main():
 
     src_entries = collect([(MODULE, "nanhe_ovo/module", ()), (ROOT / "tests", "nanhe_ovo/tests", ("__pycache__", "shell/tmp")),
                            (ROOT / "tools", "nanhe_ovo/tools", ("__pycache__",))], include_module=False)
-    src_entries += [(f"nanhe_ovo/{n}", ROOT / n, 0o644) for n in ("README.md", "package.json") if (ROOT / n).exists()]
+    src_entries += [(f"nanhe_ovo/{n}", ROOT / n, 0o644) for n in ("README.md", "package.json", "update.json", "module.yaml", "docs/CHANGELOG.md") if (ROOT / n).exists()]
     src_zip = write_zip(DIST / SRC_NAME, src_entries)
 
     cfg_count = len(list((MODULE / "config").glob("*.json")))

@@ -1,0 +1,18 @@
+# 内置游戏名单：应用页命中这些包名时置顶展示。
+# 来源：Uperf-Game-Turbo（Apache-2.0，作者 Matt Yang / 吟惋兮）perapp_powermode.txt
+# 中绑定 performance 的游戏；评测工具（fast 档）不列入。每行一个包名，# 开头为注释。
+
+com.tencent.tmgp.sgame
+com.miHoYo.Yuanshen
+com.tencent.tmgp.pubgmhd
+com.miHoYo.bh3.bilibili
+com.miHoYo.enterprise.NGHSoD
+com.miHoYo.ys.bilibili
+com.tencent.lolm
+com.netease.wotb
+com.tencent.tmgp.speedmobile
+com.tencent.KiHan
+fi.twomenandadog.zombiecatchers
+com.garena.game.kgtw
+com.tencent.ig
+com.supercell.brawlstars

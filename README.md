@@ -75,6 +75,8 @@
 
 - 版本更新由 KernelSU / APatch 等管理器的模块仓库统一推送：`module.prop` 内的 `updateJson` 指向仓库根目录的 `update.json`（版本、versionCode、模块包地址、更新日志），管理器在模块页检测到新版本后提示安装；面板内不再联网检查、下载更新包。
 - 仓库根目录另附 `module.yaml`，供模块注册表（Registry）收录；Release 资产只保留一个模块 zip，源码包不参与注册表匹配。
+- 进入 modules.kernelsu.org 在线目录的一次性门户操作：登录 KernelSU Developer Portal，为仓库安装只读的 KernelSU Modules App（仅选本仓库），预检通过后提交收录审核。审核通过后，之后每个 versionCode 更高的 immutable Release 都会自动被目录收录，无需再走面板内更新。
+- APatch 没有独立公共模块目录，沿用同一 `updateJson` 通道，由管理器按 versionCode 比对并在模块页提示更新。
 
 ### Root 形态与 SUSFS
 

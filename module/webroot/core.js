@@ -41,6 +41,9 @@
       if (!['on', 'off'].includes(args[0])) throw new Error('拒绝无效的线程开关参数');
       return base + 'thread ' + args[0];
     }
+    if (action === 'threadrules' && args.length === 0) {
+      return base + 'threadrules';
+    }
     if (action === 'threadrule' && args.length === 2) {
       if (!validPackage(args[0])) throw new Error('拒绝无效的包名');
       if (!['delete', 'ui', 'game', 'bg', 'full'].includes(args[1])) throw new Error('拒绝无效的线程预设');

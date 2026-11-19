@@ -17,6 +17,11 @@ assert.strictEqual(C.command('freq', ['cpu-policy0', '300000', '1800000']), "sh 
 assert.strictEqual(C.command('refresh', ['120', 'on']), "sh '/data/adb/modules/nanhe_ovo/script/control.sh' refresh '120' on");
 assert.strictEqual(C.command('refresh', ['60', 'off']), "sh '/data/adb/modules/nanhe_ovo/script/control.sh' refresh '60' off");
 assert.strictEqual(C.command('deviceinfo'), "sh '/data/adb/modules/nanhe_ovo/script/control.sh' deviceinfo");
+assert.strictEqual(C.command('thread', ['on']), "sh '/data/adb/modules/nanhe_ovo/script/control.sh' thread on");
+assert.strictEqual(C.command('thread', ['off']), "sh '/data/adb/modules/nanhe_ovo/script/control.sh' thread off");
+assert.strictEqual(C.command('threadrule', ['com.example.game', 'game']), "sh '/data/adb/modules/nanhe_ovo/script/control.sh' threadrule 'com.example.game' 'game'");
+assert.strictEqual(C.command('threadrule', ['com.example.game', 'delete']), "sh '/data/adb/modules/nanhe_ovo/script/control.sh' threadrule 'com.example.game' 'delete'");
+assert.strictEqual(C.command('threadrules'), "sh '/data/adb/modules/nanhe_ovo/script/control.sh' threadrules");
 
 // 参数拒绝：注入、越权、越界
 const rejects = [
@@ -36,6 +41,9 @@ const rejects = [
   () => C.command('refresh', ['0', 'on']),
   () => C.command('refresh', ['480', 'on']),
   () => C.command('refresh', ['120']),
+  () => C.command('thread', ['maybe']),
+  () => C.command('threadrule', ['bad pkg', 'game']),
+  () => C.command('threadrule', ['com.example.game', 'turbo']),
   () => C.command('unknown'),
 ];
 for (const fn of rejects) assert.throws(fn, /拒绝|不能高于/);
@@ -97,6 +105,16 @@ assert.deepStrictEqual(plain(C.parseRules('# c\n* balance\n- powersave\ncom.exam
   '*': 'balance', '-': 'powersave', 'com.example.game': 'performance',
 });
 assert.deepStrictEqual(plain(C.parseRules('com.x$(id) balance\ncom.ok.app fast')), { 'com.ok.app': 'fast' });
+
+// 线程规则：只有块头注释被解析，包名/预设都要过白名单；规则块体不影响映射
+assert.deepStrictEqual(plain(C.parseThreadRules(
+  '# nanhe_threadrule pkg=com.example.game preset=game\n' +
+  'com.example.game=p-core {\n\tUnityMain=hp-core\n}\n' +
+  '# nanhe_threadrule pkg=com.example.reader preset=ui\n' +
+  'com.example.reader=e-core,p-core {\n\tRenderThread=hp-core\n}\n' +
+  '# nanhe_threadrule pkg=bad pkg preset=game\n'
+)), { 'com.example.game': 'game', 'com.example.reader': 'ui' });
+assert.deepStrictEqual(plain(C.parseThreadRules('')), {});
 assert.deepStrictEqual(C.parseApps('com.b.app\ncom.a.app\ncom.a.app\njunk\n'), ['com.a.app', 'com.b.app']);
 
 // 频率换算与区间校验

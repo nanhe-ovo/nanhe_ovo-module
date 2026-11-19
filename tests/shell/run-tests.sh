@@ -636,7 +636,7 @@ has "自愈有提示" "$OUT" "已从旧安装恢复"
 
 printf '\n'
 make_install "$INST" gs201 arm64-v8a "$INST/mod"
-rm -f "$INST/mod/bin/uperf"
+# ZIPFILE 自愈测试的 zip 从安装桩目录打包（AppOpt 已被替换为桩，避免真机 ELF 在宿主机上无法执行）
 python3 -c 'import os,sys,zipfile
 root,out=sys.argv[1],sys.argv[2]
 z=zipfile.ZipFile(out,"w",zipfile.ZIP_DEFLATED)
@@ -644,7 +644,8 @@ for d,_,fs in os.walk(root):
     for f in fs:
         p=os.path.join(d,f)
         z.write(p, os.path.relpath(p,root))
-z.close()' "$MODULE" "$WORK/pkg.zip"
+z.close()' "$INST/mod" "$WORK/pkg.zip"
+rm -f "$INST/mod/bin/uperf"
 OUT=$(PATH="$INST/bin:$PATH" MODPATH="$INST/mod" ZIPFILE="$WORK/pkg.zip" "$SH" "$INST/mod/customize.sh" 2>&1); RC=$?
 eq "解包丢引擎时能从 ZIPFILE 自愈" "$RC" 0
 has "重新解包有提示" "$OUT" "从 zip 重新解出"
@@ -825,21 +826,24 @@ has "uninstall.sh 清理线程引擎" "$(cat "$MODULE/uninstall.sh")" "/dev/cpus
 has "NOTICE 标注 AppOptR 出处" "$(cat "$MODULE/NOTICE")" "gitee.com/sutoliu/AppOptR"
 
 THR="$RR/thread"
-: > "$D/appopt.running"
+: > "$FAKE/appopt.running"
 run_ctl status
 eq "线程引擎默认运行中（开机服务拉起）" "运行中" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="thread"{print $3}')"
 eq "线程开关默认 on" "on" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="thread_manage"{print $3}')"
 eq "线程档位随当前模式" "balance" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="thread_profile"{print $3}')"
-rm -f "$D/appopt.running"
+rm -f "$FAKE/appopt.running"
 
+rm -f "$FAKE/appopt.invoked"
 run_ctl thread on
 eq "开启线程引擎退出 0" "$RC" 0
 eq "开启返回 ok" "ok	thread	on" "$OUT"
 eq "开启后无禁用标记" "no" "$([ -f "$RR/thread_disabled" ] && echo yes || echo no)"
 eq "active.conf 已生成" "yes" "$([ -f "$THR/active.conf" ] && echo yes || echo no)"
 has "档位规则并入 active.conf" "$(cat "$THR/active.conf")" "surfaceflinger=all-core"
-has "AppOpt 已被拉起" "$(cat "$D/appopt.invoked" 2>/dev/null)" "-b nanhe_opt"
-has "AppOpt 参数指向 active.conf" "$(cat "$D/appopt.invoked" 2>/dev/null)" "-c $THR/active.conf"
+i=0
+while [ ! -s "$FAKE/appopt.invoked" ] && [ "$i" -lt 20 ]; do i=$((i + 1)); sleep 0.1; done
+has "AppOpt 已被拉起" "$(cat "$FAKE/appopt.invoked" 2>/dev/null)" "-b nanhe_opt"
+has "AppOpt 参数指向 active.conf" "$(cat "$FAKE/appopt.invoked" 2>/dev/null)" "-c $THR/active.conf"
 run_ctl thread maybe
 [ "$RC" != 0 ] && ok "非法线程开关参数被拒绝" || bad "非法参数被接受"
 
@@ -872,13 +876,13 @@ rm -f "$THR/user.conf"
 
 printf '\n== crazy 档保核与线程档位联动 ==\n'
 run_ctl mode crazy
-eq "进入 crazy 后 min_cpus 抬到 max" "6" "$(cat "$D/sys/devices/system/cpu/cpu0/core_ctl/min_cpus")"
+eq "进入 crazy 后 min_cpus 抬到 max" "$(cat "$FAKE/sys/devices/system/cpu/cpu0/core_ctl/min_cpus")" "6"
 eq "保核基线已记录" "yes" "$([ -f "$RR/corectl.aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.tsv" ] && echo yes || echo no)"
 run_ctl status
 eq "线程档位随超频档切换" "crazy" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="thread_profile"{print $3}')"
 has "超频档渲染线程固定大核" "$(cat "$THR/active.conf")" "RenderThread*=hp-core"
 run_ctl mode balance
-eq "退出 crazy 后恢复基线 min_cpus" "4" "$(cat "$D/sys/devices/system/cpu/cpu0/core_ctl/min_cpus")"
+eq "退出 crazy 后恢复基线 min_cpus" "$(cat "$FAKE/sys/devices/system/cpu/cpu0/core_ctl/min_cpus")" "4"
 run_ctl status
 eq "线程档位随退出恢复 balance" "balance" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="thread_profile"{print $3}')"
 
@@ -892,10 +896,10 @@ eq "关闭后开关为 off" "off" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="thr
 run_ctl thread on
 eq "重新开启退出 0" "$RC" 0
 eq "重新开启后无禁用标记" "no" "$([ -f "$RR/thread_disabled" ] && echo yes || echo no)"
-: > "$D/appopt.running"
+: > "$FAKE/appopt.running"
 run_ctl status
-eq "重新开启后状态恢复运行中" "运行中" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="thread"{print $3}')"
-rm -f "$D/appopt.running"
+eq "重新开启后状态恢复运行中" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="thread"{print $3}')" "运行中"
+rm -f "$FAKE/appopt.running"
 
 ########################################
 # 汇总

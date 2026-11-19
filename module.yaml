@@ -1,13 +1,16 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/KernelSU-Modules/tools/main/schemas/module.schema.json
+schemaVersion: 1
 id: nanhe_ovo
 name: 南何ovo
-version: v1.9.0
-versionCode: 202611201
-author: 南何ovo
-description: 基于 Uperf-Game-Turbo 的性能调度模块：五种全局性能模式、分应用调度、CPU/GPU 频率区间、刷新率管理与 AppOptR 线程调度；应用页第三方应用枚举，游戏置顶。
+summary: 基于 Uperf-Game-Turbo 与 AppOptR 的性能调度模块：五档全局模式、分应用调度、CPU/GPU 频率区间、刷新率管理与线程绑定，配 WebUI 管理。
+description: README.md
 license: Apache-2.0
 homepage: https://github.com/nanhe-ovo/nanhe_ovo-module
-source: https://github.com/nanhe-ovo/nanhe_ovo-module
-readme: README.md
-changelog: docs/CHANGELOG.md
+support: https://github.com/nanhe-ovo/nanhe_ovo-module/issues
+tags: [performance, gaming, scheduler]
+authors:
+  - name: 南何ovo
+compatibility:
+  architectures: [arm64-v8a]
 release:
-  assetPattern: ^nanhe_ovo-v[^-].*\.zip$
+  assetPattern: "nanhe_ovo-v*.zip"

@@ -14,6 +14,7 @@
 #   deviceinfo                      机型与系统信息（只读，供关于页展示）
 #   logs / clearlog                 读取 / 清空运行日志
 #   logline LEVEL TAG MESSAGE       由页面写入一条日志（前端发现的问题自动记录）
+#   update check|status|changelog|download|apply|cancel   云更新：检查 / 缓存状态 / 日志 / 下载 / 暂存应用 / 取消
 
 PATH=/system/bin:/system/xbin
 export PATH
@@ -30,6 +31,7 @@ LOG_MAX=200
 TUNE_FLAG=/data/adb/nanhe_ovo/tune_disabled
 MODULE=/data/adb/modules/nanhe_ovo
 . "$MODULE/script/libthread.sh"
+. "$MODULE/script/libupdate.sh"
 UPERF=/sdcard/Android/yc/uperf
 LOCKED=0
 TX_ACTIVE=0
@@ -911,6 +913,17 @@ cmd_threadrule() {
     thread_gen_conf "$TH_CUR" || { err 'thread config regenerate failed'; return 1; }
     printf 'ok\tthreadrule\t%s\t%s\n' "$1" "$2"
 }
+cmd_update() {
+    case "$1" in
+        check) cmd_update_check;;
+        status) cmd_update_status;;
+        changelog) cmd_update_changelog;;
+        download) cmd_update_download;;
+        apply) cmd_update_apply;;
+        cancel) cmd_update_cancel;;
+        *) err 'invalid update subcommand'; return 1;;
+    esac
+}
 cmd_status() {
     discover
     printf 'info\tboot_id\t%s\n' "$BOOT"
@@ -944,6 +957,11 @@ cmd_status() {
     printf 'info\trefresh_tiers\t%s\n' "$REFRESH_TIERS"
     printf 'info\trefresh_supported\t%s\n' "$RT_SUP"
     printf 'info\trefresh_known\t%s\n' "$([ -n "$RT_TABLE" ] && printf 1 || printf 0)"
+    # 云更新状态只回读缓存（status 轮询不联网）；检查动作由前端单独触发 update check。
+    US_CACHED=$(update_meta_get state)
+    case "$US_CACHED" in available|uptodate|downloaded|pending|failed|unknown) ;; *) US_CACHED=none;; esac
+    printf 'info\tupdate_state\t%s\n' "$US_CACHED"
+    printf 'info\tupdate_version\t%s\n' "$(update_meta_get version)"
     # SUSFS 兼容探测函数保留供后续适配，但 v1.6.0 不再读取、上报或告警。
     printf 'info\troot\t%s\n' "$(root_mode)"
     # 读到异常状态时自动记一条（每开机一次，不随轮询刷屏）
@@ -963,10 +981,11 @@ cmd_status() {
 }
 
 # 在任何特权文件操作之前先校验参数数量与基本语法。
-[ "$#" -gt 0 ] || fail 'usage: control.sh status|apps|rules|threadrules|deviceinfo|logs|clearlog|logline LEVEL TAG MSG|restore|freq ID MIN MAX|rule PACKAGE MODE|threadrule PACKAGE PRESET|thread on|off|mode MODE|tune on|off|refresh HZ on|off|refresh_manage on|off'
+[ "$#" -gt 0 ] || fail 'usage: control.sh status|apps|rules|threadrules|deviceinfo|logs|clearlog|logline LEVEL TAG MSG|restore|freq ID MIN MAX|rule PACKAGE MODE|threadrule PACKAGE PRESET|thread on|off|mode MODE|tune on|off|refresh HZ on|off|refresh_manage on|off|update check|status|changelog|download|apply|cancel'
 CMD=$1; shift
 case "$CMD:$#" in
     status:0|restore:0|apps:0|rules:0|threadrules:0|deviceinfo:0|logs:0|clearlog:0) ;;
+    update:1) case "$1" in check|status|changelog|download|apply|cancel) ;; *) fail 'invalid update subcommand';; esac;;
     thread:1) case "$1" in on|off) ;; *) fail 'invalid thread switch';; esac;;
     threadrule:2) valid_package "$1" || fail 'invalid package selector'
         valid_thread_preset "$2" || fail 'invalid thread preset';;
@@ -994,6 +1013,7 @@ case "$CMD" in
     logs) cmd_logs;; logline) cmd_logline "$@";; clearlog) cmd_clearlog;;
     rule) cmd_rule "$@";; mode) cmd_mode "$@";; tune) cmd_tune "$@";; refresh) cmd_refresh "$@";;
     refresh_manage) cmd_refresh_manage "$@";;
+    update) cmd_update "$@";;
 esac
 RC=$?
 [ "$RC" = 0 ] || err "command failed: $CMD"

@@ -78,6 +78,9 @@
         return reply(name, 0, RULES, '');
       }
       if (tail === 'deviceinfo') return reply(name, 0, DEVINFO + '\nok\tdeviceinfo\n', '');
+      if (tail === 'update status') return reply(name, 0, 'info\tupdate_state\tnone\nok\tupdate status\n', '');
+      if (tail === 'update changelog') return reply(name, 0, 'ok\tupdate changelog\n', '');
+      if (tail.indexOf('update ') === 0) return reply(name, 0, 'ok\tupdate\n', '');
       if (tail === 'logs') return reply(name, 0, window.NANHE_MOCK_LOGS.concat(['ok\tlogs']).join('\n') + '\n', '');
       if (tail === 'clearlog') { window.NANHE_MOCK_LOGS = []; return reply(name, 0, 'ok\tclearlog\n', ''); }
       if (tail.indexOf('logline ') === 0) {

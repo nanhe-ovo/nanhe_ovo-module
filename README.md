@@ -6,9 +6,9 @@
 
 想直接拿文案去发布，看 [docs/模块介绍.md](docs/模块介绍.md)：一句话版 / 群公告短版 / 发布帖长版，含完整出处表与已知边界。
 
-- 版本：`v1.7.0`（versionCode `202611191`）
+- 版本：`v1.8.0`（versionCode `202611192`）
 - 模块 id：`nanhe_ovo`
-- 可刷入包：[`nanhe_ovo-v1.7.0-20261119.zip`](https://github.com/nanhe-ovo/nanhe_ovo-module/releases/download/v1.7.0/nanhe_ovo-v1.7.0-20261119.zip)（见 Release 页）
+- 可刷入包：[`nanhe_ovo-v1.8.0-20261119.zip`](https://github.com/nanhe-ovo/nanhe_ovo-module/releases/download/v1.8.0/nanhe_ovo-v1.8.0-20261119.zip)（见 Release 页）
 - 要求：**arm64** 设备（内置 uperf 与 busybox 只有 aarch64 版本）
 
 ![首页](docs/screenshots/ui-overview.png)
@@ -71,6 +71,13 @@
 - 同一开机内同类诊断只记一次（按 boot_id 去重）；「清空日志」会连去重标记一起清掉。
 - **只写本机，不上传。**
 
+### 云更新（v1.8.0）
+
+- 关于页可直接检查本仓库最新 Release：按 `module.prop` 的 `versionCode`（纯数字）与远端比较，展示更新日志；状态分 `available / uptodate / downloaded / pending / unknown / failed`。
+- 下载地址只允许 GitHub Release 资产与 `*.githubusercontent.com` CDN，其余域名在下载阶段拦截；下载后核对文件大小与 SHA256（`sha256:<64hex>`），不符即删除半成品，不留残包。
+- 安装方式为「暂存包 + 开机落地」：校验通过后写入待应用标记，下次开机由 `update_apply.sh` 解压覆盖模块目录；运行中的脚本与二进制先保持原状，避免半更新状态。本机配置（`/sdcard/Android/yc/uperf` 与线程规则）不在模块目录内，升级不会被覆盖。
+- 检查 / 下载有超时控制；网络不可达只记 `failed` 状态，不打断面板操作。
+
 ### Root 形态与 SUSFS
 
 - 首页状态卡标签自动显示 `LKM` / `GKI` / `APatch` / `Magisk`：KernelSU 看 `/sys/module/kernelsu` 是否存在来区分 LKM 与内核内置（GKI）；读不到就是「未知」，不硬编码。
@@ -98,7 +105,7 @@
 ## 安装
 
 1. 确认设备为 **arm64**（非 arm64 会在安装器里被拒绝）。
-2. 管理器刷入 `nanhe_ovo-v1.6.0-20261118.zip`：Magisk → 模块 → 从本地安装；KernelSU / APatch → 模块 → 安装。
+2. 管理器刷入 `nanhe_ovo-v1.8.0-20261119.zip`：Magisk → 模块 → 从本地安装；KernelSU / APatch → 模块 → 安装。
 3. 重启。
 4. 打开面板：KernelSU / APatch 管理器 → 模块 → 南何ovo → 打开 WebUI；Magisk 本体没有模块 WebUI，可用 KsuWebUIStandalone 等工具打开 `/data/adb/modules/nanhe_ovo/webroot/index.html`。
 
@@ -112,8 +119,8 @@ python tools\build.py
 
 产物：
 
-- `dist/nanhe_ovo-v1.7.0-20261119.zip` —— 可刷入模块
-- `dist/nanhe_ovo-src-v1.7.0.zip` —— 源码包
+- `dist/nanhe_ovo-v1.8.0-20261119.zip` —— 可刷入模块
+- `dist/nanhe_ovo-src-v1.8.0.zip` —— 源码包
 
 构建校验：脚本 LF 换行、无 BOM、`#!/system/bin/sh` 首行、zip 内脚本 755、`module.prop` 必填字段；文本写入 zip 时统一转 LF。
 
@@ -149,7 +156,7 @@ node tests\render.cjs            # 60 项断言 + 截图
 3. 液态玻璃是 CSS 近似（模糊 + 饱和度 + 边缘色散 + 高光），做不到 Backdrop `lens()` 的逐像素折射。
 4. LKM / GKI 判断依据 `/sys/module/kernelsu` 是否存在，属启发式；页面同时显示完整值供比对。
 5. APatch / Magisk 只按 `/data/adb/ap`、`/data/adb/magisk` 目录识别，不解析版本号。
-6. 日志最多 200 行、只在本机；面板不联网。
+6. 日志最多 200 行、只在本机；除云更新主动检查 GitHub Release 外，面板不联网、不上传设备数据。
 7. 线程引擎只做静态放置（cpuset 分组），不改频率与优先级；双簇 / 单簇平台语义核可能解析为空集，相关规则被跳过；引擎起不来只影响线程调度，不影响 uperf。
 8. 未在全部机型验证；当前为 Android 17 / MT8799 真机对照 + Ubuntu 容器后端测试 + Windows 无头 Edge 渲染测试。
 

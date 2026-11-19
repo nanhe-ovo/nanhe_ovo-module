@@ -4,6 +4,9 @@
 
 MODDIR=${0%/*}
 
+# 云更新落地：引擎启动前，把上次暂存并校验过的更新包解压覆盖模块目录
+sh "$MODDIR/script/update_apply.sh"
+
 sh "$MODDIR/script/initsvc.sh"
 
 # 解锁后应用屏幕刷新率：抵消部分机型开机锁 60Hz 与静止回落

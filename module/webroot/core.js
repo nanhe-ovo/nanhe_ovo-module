@@ -61,6 +61,10 @@
       if (!['on', 'off'].includes(args[1])) throw new Error('拒绝无效的刷新率锁定参数');
       return base + 'refresh ' + quote(String(hz)) + ' ' + args[1];
     }
+    if (action === 'update' && args.length === 1) {
+      if (!['check', 'status', 'changelog', 'download', 'apply', 'cancel'].includes(args[0])) throw new Error('拒绝无效的更新子命令');
+      return base + 'update ' + args[0];
+    }
     throw new Error('拒绝无效的控制参数');
   }
 
@@ -146,6 +150,22 @@
     return rows;
   }
 
+  // 云更新状态：只取 info 行，状态值限定在后端枚举内，未知回退 none。
+  function parseUpdateStatus(text) {
+    const info = Object.create(null);
+    String(text).split(/\r?\n/).filter(Boolean).forEach(line => {
+      const p = line.split('\t');
+      if (p[0] === 'info' && p.length >= 2) info[p[1]] = p.slice(2).join('\t');
+    });
+    const allowed = ['available', 'uptodate', 'downloaded', 'pending', 'failed', 'unknown', 'none'];
+    return {
+      state: allowed.includes(info.update_state) ? info.update_state : 'none',
+      version: String(info.update_version || '').trim(),
+      code: String(info.update_code || '').trim(),
+      size: String(info.update_size || '').trim(),
+    };
+  }
+
   // 运行日志：log <时间> <级别> <标签> <正文>，只做展示，级别统一成三种。
   function parseLogs(text) {
     const rows = [];
@@ -174,5 +194,5 @@
     return [String(min), String(max)];
   }
 
-  return { CONTROL, FALLBACK_MODES, command, exec, parseStatus, parseRules, parseThreadRules, parseApps, parseDeviceInfo, parseLogs, numbers, mhz, validateRange, validMode, validPackage };
+  return { CONTROL, FALLBACK_MODES, command, exec, parseStatus, parseRules, parseThreadRules, parseApps, parseDeviceInfo, parseUpdateStatus, parseLogs, numbers, mhz, validateRange, validMode, validPackage };
 });

@@ -3,14 +3,14 @@
 基于 [Uperf-Game-Turbo](https://github.com/yinwanxi/Uperf-Game-Turbo) 的性能调度模块（Magisk / KernelSU / APatch 通用可刷入 zip），内置一套 Miuix 观感的本地 WebUI（绿色「工作中」状态卡、纯白大圆角卡、底部悬浮液态玻璃胶囊导航）：切换全局性能模式、为单个应用绑定调度策略、直接控制 CPU / GPU 频率区间、调节屏幕刷新率、线程调度（AppOptR 引擎，跟随模式自动切换档位，应用页可单应用绑定线程预设），关于页展示机型与系统信息，并带一份自动记录的运行日志。
 
 - 模块 ID：`nanhe_ovo`
-- 版本：`v1.7.0`（versionCode `202611191`）
+- 版本：`v1.8.0`（versionCode `202611192`）
 - 引擎：uperf（来自 Uperf-Game-Turbo，Apache-2.0）+ AppOptR（线程调度，GPL-3.0）
 - WebUI：纯本地 HTML/CSS/JS，无远程资源，不联网
 
 ## 安装
 
 1. 确认设备为 **arm64**（模块内置的 uperf 与 busybox 只有 aarch64 版本）。
-2. 在管理器里刷入 `nanhe_ovo-v1.6.0-20261118.zip`：Magisk → 模块 → 从本地安装；KernelSU / APatch → 模块 → 安装。
+2. 在管理器里刷入 `nanhe_ovo-v1.8.0-20261119.zip`：Magisk → 模块 → 从本地安装；KernelSU / APatch → 模块 → 安装。
 3. 重启。
 4. 打开面板：KernelSU / APatch 管理器 → 模块 → 南何ovo → 打开 WebUI。
    Magisk 本体没有模块 WebUI，可用 KsuWebUIStandalone 等工具打开 `/data/adb/modules/nanhe_ovo/webroot/index.html`。
@@ -199,6 +199,7 @@ nanhe_ovo/
 本模块的改动部分：
 
 - 新增 `script/control.sh`（WebUI 后端）与 `webroot/` 全套面板；
+- v1.8.0 管理器内云更新：`script/libupdate.sh`（检查 Release、versionCode 比较、域名白名单、大小与 SHA256 校验、暂存元数据）+ `script/update_apply.sh`（开机落地覆盖模块目录）；后端 `update check|status|changelog|download|apply|cancel` 命令，关于页更新卡片；本机配置不随升级覆盖；
 - v1.7.0 集成 AppOptR 线程引擎（GPL-3.0，出处与许可随包标注）：五档线程规则（`appopt/appopt_*.conf`）、`script/libthread.sh` + `script/thread_svc.sh`、后端 `thread` / `threadrule` / `threadrules` 命令、首页线程开关、应用页线程预设、crazy 档 core_ctl 保核与恢复、安装器引擎校验、卸载清理；
 - 新增 `customize.sh`（平台配置匹配 + `template.json` 兜底 + 冲突提示）；
 - `initsvc.sh` 增加系统调优开关与 `/data/powercfg.sh` 占用保护；

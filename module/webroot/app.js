@@ -72,6 +72,7 @@
     status: C.parseStatus(DEMO), apps: ['com.android.settings', 'com.example.reader', 'com.example.game'],
     rules: C.parseRules(DEMO_RULES), threadrules: C.parseThreadRules(DEMO_THREAD), deviceInfo: [], logs: DEMO_LOGS.slice(), limit: 60,
     logged: Object.create(null),
+    update: { state: 'none', version: '', size: '', changelog: '' },
   };
 
   function el(tag, className, text) {
@@ -109,6 +110,7 @@
     state.deviceInfo = [];
     state.logs = DEMO_LOGS.slice();
     state.logged = Object.create(null);
+    state.update = { state: 'none', version: '', size: '', changelog: '' };
   }
 
   // 页面发现的问题自动写进后端日志；同一次会话里同一个 key 只写一条，
@@ -128,6 +130,25 @@
       state.logs = [{ time: new Date().toLocaleTimeString('zh-CN', { hour12: false }), level: 'error', tag: 'logs', message: '日志读取失败：' + error.message }];
     }
     renderLogs();
+  }
+
+  // 更新状态只回读后端缓存（不联网）；需要展示更新日志时再取 changelog。
+  async function refreshUpdateState() {
+    if (!state.live) { state.update = { state: 'none', version: '', size: '', changelog: '' }; return; }
+    try {
+      const result = await C.exec(window, C.command('update', ['status']));
+      state.update = C.parseUpdateStatus(result.stdout);
+    } catch (_) {
+      state.update = { state: 'none', version: '', size: '', changelog: '' };
+    }
+    if (['available', 'downloaded', 'pending'].includes(state.update.state)) {
+      try {
+        const cl = await C.exec(window, C.command('update', ['changelog']));
+        state.update.changelog = cl.stdout.replace(/^ok\tupdate changelog\n?/, '').trim();
+      } catch (_) { state.update.changelog = ''; }
+    } else {
+      state.update.changelog = '';
+    }
   }
 
   async function readBackend() {
@@ -162,6 +183,7 @@
     state.deviceInfo = devinfo ? C.parseDeviceInfo(devinfo.stdout) : [];
 
     state.live = true; state.demo = false;
+    await refreshUpdateState();
     const rInfo = refreshInfo();
     if (!rInfo.known) autoLog('refresh-table', 'warn', 'refresh', '页面发现本机没有上报刷新率档位表，已放开全部档位（后端 status 的 refresh_known=0）');
     if (!state.apps.length) autoLog('apps-empty', 'warn', 'apps', '页面读到的应用列表为空（后端枚举失败或没有已安装应用）');
@@ -518,9 +540,47 @@
     }
   }
 
+  function formatSize(bytes) {
+    const n = Number(bytes);
+    if (!Number.isFinite(n) || n <= 0) return '';
+    if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+    return Math.max(1, Math.round(n / 1024)) + ' KB';
+  }
+
+  function renderUpdate() {
+    const u = state.update;
+    const pill = $('update-pill'), note = $('update-note'), cl = $('update-changelog');
+    const check = $('update-check'), download = $('update-download'),
+      apply = $('update-apply'), cancel = $('update-cancel');
+    if (!pill) return;
+    const sizeText = formatSize(u.size);
+    pill.textContent = {
+      available: '可更新', uptodate: '已是最新', downloaded: '待重启', pending: '待重启',
+      failed: '检查失败', unknown: '版本未知', none: '未检查',
+    }[u.state] || '未检查';
+    check.hidden = ['downloaded', 'pending'].includes(u.state);
+    download.hidden = u.state !== 'available' && u.state !== 'unknown';
+    apply.hidden = u.state !== 'downloaded';
+    cancel.hidden = !['downloaded', 'pending'].includes(u.state);
+    const busy = state.busy || state.confirming || !state.live;
+    check.disabled = busy; download.disabled = busy; apply.disabled = busy; cancel.disabled = busy;
+    const texts = {
+      none: '尚未检查更新。检查会访问 GitHub Release，下载后校验大小与 SHA256，重启时落地，不覆盖本机已保存的调度与线程规则。',
+      uptodate: '当前已是最新版本。',
+      failed: '检查更新失败：网络不可达或发布源不可用，请稍后重试。',
+      unknown: '远端版本信息缺失，无法判断是否需要更新，可重试检查。',
+      available: '发现新版本 ' + (u.version || '') + (sizeText ? '（' + sizeText + '）' : '') + '，下载并校验通过后重启即可落地。',
+      downloaded: '更新包已下载并校验通过，重启设备后自动落地；本机配置与规则不受影响。',
+      pending: '已安排重启后应用 ' + (u.version || '更新') + '，重启设备生效；如需取消可点下方按钮。',
+    };
+    note.textContent = texts[u.state] || texts.none;
+    if (u.changelog) { cl.hidden = false; cl.textContent = u.changelog; } else { cl.hidden = true; }
+  }
+
   function renderAbout() {
     const info = state.status.info;
     $('about-version').textContent = info.version || 'v-';
+    renderUpdate();
   }
 
   // 运行日志：新的在上面；只显示最近 60 条，完整内容仍保留在后端文件里。
@@ -620,6 +680,29 @@
         : '将固定当前或已选择的刷新率档位，同时写入上限与下限，开机自动重新应用。',
       'refresh_manage', [r.managed ? 'off' : 'on']);
   });
+
+  async function runUpdate(action) {
+    if (!state.live || state.busy || state.confirming) return;
+    setBusy(true);
+    try {
+      const timeout = (action === 'check' || action === 'download') ? 45000 : 25000;
+      await C.exec(window, C.command('update', [action]), timeout);
+      await refreshUpdateState();
+      const verbs = { check: '检查完成。', download: '更新包已下载并校验通过。', apply: '已安排重启后应用，重启设备生效。', cancel: '已取消待应用的更新。' };
+      notice(verbs[action] || '操作完成。', false);
+    } catch (error) {
+      notice('更新操作未成功：' + error.message, true);
+      await refreshUpdateState();
+    } finally { render(); setBusy(false); }
+  }
+  $('update-check').addEventListener('click', () => runUpdate('check'));
+  $('update-download').addEventListener('click', () => runUpdate('download'));
+  $('update-apply').addEventListener('click', async () => {
+    if (!state.live || state.busy || state.confirming) return;
+    const accepted = await confirmAction('重启并应用更新？', '已校验的更新包将在下次开机时覆盖模块目录；本机调度与线程规则保留。请先保存其它工作。');
+    if (accepted) await runUpdate('apply');
+  });
+  $('update-cancel').addEventListener('click', () => runUpdate('cancel'));
   $('app-search').addEventListener('input', () => { state.limit = 60; renderApps(); setBusy(state.busy); });
 
   // 玻璃的镜面高光跟随指针，按下时轻微收缩再回弹：这是 Backdrop 交互玻璃的核心手感

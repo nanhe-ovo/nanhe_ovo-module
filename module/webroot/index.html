@@ -71,6 +71,17 @@
 
       <section id="page-about" class="page" aria-label="关于性能调度" hidden>
         <article class="card about-brand"><span class="brand-icon large">N<span>o</span></span><h2>性能调度</h2><p>性能与日常之间，找到你的节奏。</p><span id="about-version" class="pill">v-</span></article>
+        <article class="card update-card">
+          <div class="section-title inside"><h2>版本更新</h2><span id="update-pill" class="pill">未检查</span></div>
+          <p class="list-note" id="update-note">尚未检查更新。检查会访问 GitHub Release，下载后校验大小与 SHA256，重启时落地，不覆盖本机已保存的调度与线程规则。</p>
+          <pre id="update-changelog" class="update-changelog" hidden></pre>
+          <div class="update-actions">
+            <button id="update-check" class="secondary-button" type="button">检查更新</button>
+            <button id="update-download" class="primary-button" type="button" hidden>下载更新包</button>
+            <button id="update-apply" class="primary-button" type="button" hidden>重启并应用</button>
+            <button id="update-cancel" class="secondary-button" type="button" hidden>取消更新</button>
+          </div>
+        </article>
         <div class="section-title"><h2>机型与系统</h2><span>只读采集</span></div>
         <div id="device-info" class="device-info"></div>
         <article class="card log-card">

@@ -23,6 +23,16 @@ assert.strictEqual(C.command('threadrule', ['com.example.game', 'game']), "sh '/
 assert.strictEqual(C.command('threadrule', ['com.example.game', 'delete']), "sh '/data/adb/modules/nanhe_ovo/script/control.sh' threadrule 'com.example.game' 'delete'");
 assert.strictEqual(C.command('threadrules'), "sh '/data/adb/modules/nanhe_ovo/script/control.sh' threadrules");
 
+// 云更新命令
+assert.strictEqual(C.command('update', ['check']), "sh '/data/adb/modules/nanhe_ovo/script/control.sh' update check");
+assert.strictEqual(C.command('update', ['download']), "sh '/data/adb/modules/nanhe_ovo/script/control.sh' update download");
+assert.strictEqual(C.command('update', ['apply']), "sh '/data/adb/modules/nanhe_ovo/script/control.sh' update apply");
+for (const fn of [
+  () => C.command('update', ['hack']),
+  () => C.command('update', []),
+  () => C.command('update', ['check', 'x']),
+]) assert.throws(fn, /拒绝/);
+
 // 参数拒绝：注入、越权、越界
 const rejects = [
   () => C.command('mode', ['fast;reboot']),
@@ -141,6 +151,18 @@ assert.deepStrictEqual(dinfo.map(r => [r.section, r.label, r.value]), [
   ['battery', '技术', 'Li-poly'],
 ]);
 assert.deepStrictEqual(C.numbers('30 48 60 120 abc 0 -1 7.5'), [30, 48, 60, 120]);
+
+// 云更新状态解析：状态枚举兜底 none，其余字段原样保留
+const upd = C.parseUpdateStatus([
+  'info\tupdate_state\tavailable',
+  'info\tupdate_version\tv1.8.0',
+  'info\tupdate_code\t202611192',
+  'info\tupdate_size\t2489442',
+  'ok\tupdate status',
+].join('\n'));
+assert.deepStrictEqual(upd, { state: 'available', version: 'v1.8.0', code: '202611192', size: '2489442' });
+assert.strictEqual(C.parseUpdateStatus('info\tupdate_state\tbogus\n').state, 'none');
+assert.strictEqual(C.parseUpdateStatus('').state, 'none');
 
 // 桥接：成功、失败、超时、缺桥接
 (async () => {

@@ -18,7 +18,7 @@ F=0
 ok()   { printf 'PASS %s\n' "$1"; }
 bad()  { printf 'FAIL %s\n' "$1"; F=1; }
 skip() { printf 'SKIP %s\n' "$1"; }
-eq()   { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1（期望 [$3]，实际 [$2]）"; fi; }
+eq()   { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1（期望 [$2]，实际 [$3]）"; fi; }
 has()  { case "$2" in *"$3"*) ok "$1" ;; *) bad "$1（输出未包含 [$3]，实际 [$2]）" ;; esac; }
 hasnt(){ case "$2" in *"$3"*) bad "$1（输出意外包含 [$3]）" ;; *) ok "$1" ;; esac; }
 
@@ -111,6 +111,13 @@ make_fixture() {
     printf '#!/bin/sh\necho 6.6.118-android15-test\n' > "$D/bin/uname"
     printf '#!/bin/sh\necho Enforcing\n' > "$D/bin/getenforce"
     printf '#!/bin/sh\nexit 0\n' > "$D/bin/sleep"
+    # 云更新网络桩：curl / wget 把发布元数据或安装包写到 -o / -O 指定的位置；
+    # 下载地址（releases/download）返回安装包夹具，其余返回元数据夹具；
+    # 放置 $D/curl_fail 标记即模拟网络失败。
+    printf '#!/bin/sh\nOUT=""\nURL=""\nprev=""\nfor a in "$@"; do\n if [ "$prev" = "-o" ]; then OUT="$a"; fi\n case "$a" in http*) URL="$a";; esac\n prev="$a"\ndone\n[ -f "%s/curl_fail" ] && exit 1\ncase "$URL" in *releases/download*) cp "%s/update-pkg.zip" "$OUT";; *) cp "%s/release.json" "$OUT";; esac\n' "$D" "$D" "$D" > "$D/bin/curl"
+    printf '#!/bin/sh\nOUT=""\nURL=""\nprev=""\nfor a in "$@"; do\n if [ "$prev" = "-O" ]; then OUT="$a"; fi\n case "$a" in http*) URL="$a";; esac\n prev="$a"\ndone\n[ -f "%s/curl_fail" ] && exit 1\ncase "$URL" in *releases/download*) cp "%s/update-pkg.zip" "$OUT";; *) cp "%s/release.json" "$OUT";; esac\n' "$D" "$D" "$D" > "$D/bin/wget"
+    # 解压桩：真实宿主机可能没有 unzip，用 python3 解包，供落地脚本调用
+    printf '#!/bin/sh\nZ="";D="";OPT=""\nwhile [ $# -gt 0 ]; do\n case "$1" in\n  -l) OPT=1; shift;;\n  -o) shift;;\n  -d) shift; D="$1"; shift;;\n  *) Z="$1"; shift;;\n esac\ndone\nif [ "$OPT" = 1 ]; then\n python3 -c '"'"'import zipfile,sys\nprint("\\n".join(zipfile.ZipFile(sys.argv[1]).namelist()))'"'"' "$Z"\nelse\n python3 -c '"'"'import zipfile,sys\nzipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])'"'"' "$Z" "$D"\nfi\n' > "$D/bin/unzip"
     # 机型信息读取的 sysfs 夹具
     mkdir -p "$D/sys/devices/system/cpu"
     printf '0-7\n' > "$D/sys/devices/system/cpu/possible"
@@ -150,6 +157,14 @@ make_fixture() {
         -e "s#/sys/#$D/sys/#g" \
         "$MODULE/script/thread_svc.sh" > "$D/data/adb/modules/nanhe_ovo/script/thread_svc.sh"
     chmod +x "$D/data/adb/modules/nanhe_ovo/script/libthread.sh" "$D/data/adb/modules/nanhe_ovo/script/thread_svc.sh"
+    # 云更新库副本：与后端同套路径替换
+    sed -e "s#/data/adb/modules/nanhe_ovo#$D/data/adb/modules/nanhe_ovo#g" \
+        -e "s#/data/adb/nanhe_ovo#$D/data/adb/nanhe_ovo#g" \
+        "$MODULE/script/libupdate.sh" > "$D/data/adb/modules/nanhe_ovo/script/libupdate.sh"
+    chmod +x "$D/data/adb/modules/nanhe_ovo/script/libupdate.sh"
+    sed -e "s#/data/adb/nanhe_ovo#$D/data/adb/nanhe_ovo#g" \
+        "$MODULE/script/update_apply.sh" > "$D/data/adb/modules/nanhe_ovo/script/update_apply.sh"
+    chmod +x "$D/data/adb/modules/nanhe_ovo/script/update_apply.sh"
     # 五档线程规则与许可证
     mkdir -p "$D/data/adb/modules/nanhe_ovo/appopt"
     cp "$MODULE"/appopt/appopt_*.conf "$D/data/adb/modules/nanhe_ovo/appopt/" 2>/dev/null
@@ -541,7 +556,7 @@ make_install() {
     printf '#!/bin/sh\ncase "$1" in\n ro.product.cpu.abi) echo "%s";;\n ro.board.platform) echo "%s";;\n ro.product.board) echo "";;\n *) echo "";;\nesac\n' "$abi" "$plat" > "$D/bin/getprop"
     chmod +x "$D/bin/getprop"
 }
-run_install() { OUT=$(PATH="$INST/bin:$PATH" MODPATH="$INST/mod" "$SH" "$INST/mod/customize.sh" 2>&1); RC=$?; }
+run_install() { OUT=$(PATH="$INST/bin:$HOST_PATH" MODPATH="$INST/mod" "$SH" "$INST/mod/customize.sh" 2>&1); RC=$?; }
 
 make_install "$INST" gs201 arm64-v8a "$INST/mod"
 run_install
@@ -642,11 +657,13 @@ root,out=sys.argv[1],sys.argv[2]
 z=zipfile.ZipFile(out,"w",zipfile.ZIP_DEFLATED)
 for d,_,fs in os.walk(root):
     for f in fs:
-        p=os.path.join(d,f)
-        z.write(p, os.path.relpath(p,root))
+        p=os.path.join(d,f); rel=os.path.relpath(p,root)
+        zi=zipfile.ZipInfo(rel,date_time=(1980,1,1,0,0,0))
+        zi.compress_type=zipfile.ZIP_DEFLATED
+        z.writestr(zi,open(p,"rb").read())
 z.close()' "$INST/mod" "$WORK/pkg.zip"
 rm -f "$INST/mod/bin/uperf"
-OUT=$(PATH="$INST/bin:$PATH" MODPATH="$INST/mod" ZIPFILE="$WORK/pkg.zip" "$SH" "$INST/mod/customize.sh" 2>&1); RC=$?
+OUT=$(PATH="$INST/bin:$HOST_PATH" MODPATH="$INST/mod" ZIPFILE="$WORK/pkg.zip" "$SH" "$INST/mod/customize.sh" 2>&1); RC=$?
 eq "解包丢引擎时能从 ZIPFILE 自愈" "$RC" 0
 has "重新解包有提示" "$OUT" "从 zip 重新解出"
 eq "自愈后引擎可执行" "yes" "$([ -x "$INST/mod/bin/uperf" ] && echo yes || echo no)"
@@ -900,6 +917,88 @@ eq "重新开启后无禁用标记" "no" "$([ -f "$RR/thread_disabled" ] && echo
 run_ctl status
 eq "重新开启后状态恢复运行中" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="thread"{print $3}')" "运行中"
 rm -f "$FAKE/appopt.running"
+
+printf '\n== 云更新（v1.8.0）==\n'
+D=$FAKE
+UPD="$RR/update"
+# 安装包夹具：含 module.prop，供下载与落地脚本解压
+python3 -c 'import zipfile,sys
+z=zipfile.ZipFile(sys.argv[1],"w")
+z.writestr("module.prop","id=nanhe_ovo\nversion=v1.8.0\n")
+z.close()' "$D/update-pkg.zip"
+
+cat > "$D/release.json" <<'JSON'
+{"tag_name":"v1.8.0","name":"南何ovo · 性能调度 v1.8.0","body":"versionCode=202611193\n## 更新内容\n- 管理器内云更新","assets":[{"name":"nanhe_ovo-src-v1.8.0.zip","browser_download_url":"https://github.com/nanhe-ovo/nanhe_ovo-module/releases/download/v1.8.0/nanhe_ovo-src-v1.8.0.zip"},{"name":"nanhe_ovo-v1.8.0-20261119.zip","browser_download_url":"https://github.com/nanhe-ovo/nanhe_ovo-module/releases/download/v1.8.0/nanhe_ovo-v1.8.0-20261119.zip"}]}
+JSON
+
+run_ctl update status
+eq "未检查时状态 none" "none" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="update_state"{print $3}')"
+
+run_ctl update check
+eq "检查退出 0" "0" "$RC"
+eq "远端版本更高 → available" "available" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="update_state"{print $3}')"
+eq "识别远端版本" "v1.8.0" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="update_version"{print $3}')"
+eq "versionCode 已解析" "202611193" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="update_code"{print $3}')"
+has "更新日志已落盘" "$(cat "$UPD/changelog.txt" 2>/dev/null)" "云更新"
+has "元数据选中模块包" "$(cat "$UPD/meta")" "nanhe_ovo-v1.8.0-20261119.zip"
+hasnt "元数据不引用源码包" "$(cat "$UPD/meta")" "-src-"
+
+run_ctl update download
+eq "下载退出 0" "0" "$RC"
+eq "暂存包已落地" "yes" "$([ -f "$UPD/staged.zip" ] && echo yes || echo no)"
+eq "状态 downloaded" "downloaded" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="update_state"{print $3}')"
+
+run_ctl update apply
+eq "应用退出 0" "0" "$RC"
+eq "待应用标记已写入" "yes" "$([ -f "$UPD/pending" ] && echo yes || echo no)"
+eq "状态 pending" "pending" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="update_state"{print $3}')"
+
+run_ctl update cancel
+eq "取消退出 0" "0" "$RC"
+eq "暂存包已清理" "no" "$([ -f "$UPD/staged.zip" ] && echo yes || echo no)"
+eq "标记已清理" "no" "$([ -f "$UPD/pending" ] && echo yes || echo no)"
+
+cat > "$D/release.json" <<'JSON'
+{"tag_name":"v1.7.0","body":"versionCode=202611191","assets":[{"name":"nanhe_ovo-v1.7.0-20261119.zip","browser_download_url":"https://github.com/nanhe-ovo/nanhe_ovo-module/releases/download/v1.7.0/nanhe_ovo-v1.7.0-20261119.zip"}]}
+JSON
+run_ctl update check
+eq "同版本 → uptodate" "uptodate" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="update_state"{print $3}')"
+
+: > "$D/curl_fail"
+run_ctl update check
+[ "$RC" != 0 ] && ok "网络不可达时检查失败返回非 0" || bad "网络失败仍判成功"
+eq "失败状态 failed" "failed" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="update_state"{print $3}')"
+rm -f "$D/curl_fail"
+
+cat > "$D/release.json" <<'JSON'
+{"tag_name":"v1.8.0","body":"versionCode=202611193","assets":[{"name":"nanhe_ovo-v1.8.0-20261119.zip","browser_download_url":"http://evil.example.com/mod.zip"}]}
+JSON
+run_ctl update check
+[ "$RC" = 0 ] || bad "夹具检查失败：$ERR"
+run_ctl update download
+[ "$RC" != 0 ] && ok "非白名单域名下载被拒绝" || bad "第三方地址被接受"
+eq "未留下半成品" "no" "$([ -f "$UPD/staged.zip" ] && echo yes || echo no)"
+
+cat > "$D/release.json" <<'JSON'
+{"tag_name":"v1.8.0","body":"versionCode=202611193","assets":[{"name":"nanhe_ovo-v1.8.0-20261119.zip","browser_download_url":"https://github.com/nanhe-ovo/nanhe_ovo-module/releases/download/v1.8.0/nanhe_ovo-v1.8.0-20261119.zip","digest":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}]}
+JSON
+run_ctl update check
+eq "带摘要的夹具检查通过" "0" "$RC"
+run_ctl update download
+[ "$RC" != 0 ] && ok "SHA256 不匹配时拒绝并删包" || bad "摘要不符仍保留暂存包"
+eq "摘要不符未留下半成品" "no" "$([ -f "$UPD/staged.zip" ] && echo yes || echo no)"
+
+# 开机落地：待应用包在引擎启动前解压覆盖模块目录，落地后清理暂存
+cat > "$D/release.json" <<'JSON'
+{"tag_name":"v1.8.0","body":"versionCode=202611193","assets":[{"name":"nanhe_ovo-v1.8.0-20261119.zip","browser_download_url":"https://github.com/nanhe-ovo/nanhe_ovo-module/releases/download/v1.8.0/nanhe_ovo-v1.8.0-20261119.zip"}]}
+JSON
+run_ctl update check && run_ctl update download && run_ctl update apply
+eq "落地前暂存包在位" "yes" "$([ -f "$UPD/staged.zip" ] && echo yes || echo no)"
+BOOT_APPLY_OUT=$("$SH" "$D/data/adb/modules/nanhe_ovo/script/update_apply.sh" 2>&1); BOOT_APPLY_RC=$?
+eq "落地脚本退出 0" "0" "$BOOT_APPLY_RC"
+has "模块目录已被新包覆盖" "$(cat "$D/data/adb/modules/nanhe_ovo/module.prop")" "v1.8.0"
+eq "落地后暂存包已清理" "no" "$([ -f "$UPD/staged.zip" ] && echo yes || echo no)"
+eq "落地后待应用标记已清理" "no" "$([ -f "$UPD/pending" ] && echo yes || echo no)"
 
 ########################################
 # 汇总

@@ -6,9 +6,9 @@
 
 想直接拿文案去发布，看 [docs/模块介绍.md](docs/模块介绍.md)：一句话版 / 群公告短版 / 发布帖长版，含完整出处表与已知边界。
 
-- 版本：`v1.6.0`（versionCode `202611181`）
+- 版本：`v1.7.0`（versionCode `202611191`）
 - 模块 id：`nanhe_ovo`
-- 可刷入包：[`nanhe_ovo-v1.6.0-20261118.zip`](https://github.com/nanhe-ovo/nanhe_ovo-module/releases/download/v1.6.0/nanhe_ovo-v1.6.0-20261118.zip)（见 Release 页）
+- 可刷入包：[`nanhe_ovo-v1.7.0-20261119.zip`](https://github.com/nanhe-ovo/nanhe_ovo-module/releases/download/v1.7.0/nanhe_ovo-v1.7.0-20261119.zip)（见 Release 页）
 - 要求：**arm64** 设备（内置 uperf 与 busybox 只有 aarch64 版本）
 
 ![首页](docs/screenshots/ui-overview.png)
@@ -46,6 +46,15 @@
 - 修复「开机锁 60Hz」：总开关开启且目标受支持时按保存值重写并补写两次；新安装不再自动抢最高档，旧版有 `refresh.txt` 时兼容为开启。
 - **天玑 Mali GPU**：恢复内核 fast DVFS；按模式在真实 OPP 表上抬 `min_freq`（性能 75%、极速 85%、超频 95%），不改 `max_freq`，省电 / 均衡恢复开机快照。
 - **骁龙 8 Elite 低分组**：开启 `sdm8elite.json` 的 sched，`0-1` 作为轻载组，音频 / 网络 / 解码线程定向派活并由 util 升频。
+
+### 线程调度（v1.7.0）
+
+- 集成 **AppOptR**（作者 SutoLiu，GPL-3.0，https://gitee.com/sutoliu/AppOptR）作为线程引擎：进程创建与线程改名即时生效（eBPF，内核无 BTF 自动回退轮询），按 cpuset 分组放置线程，不改频率、不改优先级。
+- **五档规则随模式自动切换**（`module/appopt/appopt_*.conf`，语义核 e-core / p-core / hp-core / all-core，跨平台）：省电档收紧大核使用降低功耗；极速 / 超频档渲染线程固定大核、worker 共享中大核、IO 隔离中核，帧率更稳。
+- **超频档保核**：进入 crazy 时 core_ctl `min_cpus=max_cpus`（进档前记基线），退出恢复，减少热插拔与线程迁移抖动。
+- **单应用线程绑定**：应用页每个应用可绑定线程预设（界面 / 游戏 / 后台 / 全核 / 不绑定），保存立即生效，块头带 `# nanhe_threadrule` 标记供面板还原。
+- **首页总开关**：关闭时停守护进程并清理 cpuset 分组，重启不自动拉起；开启时按当前模式重新生成配置并启动。
+- 已知退化：双簇（8 Elite 2+6）、单簇（天玑 8500）平台上部分语义核可能解析为空集、相关规则被引擎跳过；本版不做设备级数字回退，这类机型以「后台」「全核」预设为主。
 
 ### 系统调优
 
@@ -103,8 +112,8 @@ python tools\build.py
 
 产物：
 
-- `dist/nanhe_ovo-v1.6.0-20261118.zip` —— 可刷入模块
-- `dist/nanhe_ovo-src-v1.6.0.zip` —— 源码包
+- `dist/nanhe_ovo-v1.7.0-20261119.zip` —— 可刷入模块
+- `dist/nanhe_ovo-src-v1.7.0.zip` —— 源码包
 
 构建校验：脚本 LF 换行、无 BOM、`#!/system/bin/sh` 首行、zip 内脚本 755、`module.prop` 必填字段；文本写入 zip 时统一转 LF。
 
@@ -141,7 +150,8 @@ node tests\render.cjs            # 60 项断言 + 截图
 4. LKM / GKI 判断依据 `/sys/module/kernelsu` 是否存在，属启发式；页面同时显示完整值供比对。
 5. APatch / Magisk 只按 `/data/adb/ap`、`/data/adb/magisk` 目录识别，不解析版本号。
 6. 日志最多 200 行、只在本机；面板不联网。
-7. 未在全部机型验证；当前为 Android 17 / MT8799 真机对照 + Ubuntu 容器后端测试 + Windows 无头 Edge 渲染测试。
+7. 线程引擎只做静态放置（cpuset 分组），不改频率与优先级；双簇 / 单簇平台语义核可能解析为空集，相关规则被跳过；引擎起不来只影响线程调度，不影响 uperf。
+8. 未在全部机型验证；当前为 Android 17 / MT8799 真机对照 + Ubuntu 容器后端测试 + Windows 无头 Edge 渲染测试。
 
 ## 致谢与出处
 
@@ -150,6 +160,7 @@ node tests\render.cjs            # 60 项断言 + 截图
 | 引用内容 | 仓库 / 出处 | 许可证 | 用法 |
 | --- | --- | --- | --- |
 | 调度引擎、平台配置、开机脚本、`system/vendor` 覆盖 | [yinwanxi/Uperf-Game-Turbo](https://github.com/yinwanxi/Uperf-Game-Turbo)（Matt Yang / 吟惋兮） | Apache-2.0 | 模块核心调度，`LICENSE` / `NOTICE` 原样保留 |
+| 线程调度引擎（AppOpt / AppOpt-ebpf 二进制） | [sutoliu/AppOptR](https://gitee.com/sutoliu/AppOptR)（SutoLiu） | GPL-3.0 | 线程引擎，规则在本模块内二次封装，许可证全文随包分发（`appopt/LICENSE-GPL3.txt`），`NOTICE` 已声明 |
 | 底栏液态玻璃视觉要素 | [Kyant0/AndroidLiquidGlass](https://github.com/Kyant0/AndroidLiquidGlass) | Apache-2.0 | 仅参考参数，CSS 近似，未打包其代码 |
 | 玻璃组件文档（Bottom Bar / lens / vibrancy 参数） | [kyant.gitbook.io/backdrop](https://kyant.gitbook.io/backdrop) | 文档 | 参数与组合方式参考 |
 | LKM / GKI 形态与 `/data/adb/ksu`、`ksud` 约定 | [tiann/KernelSU](https://github.com/tiann/KernelSU) | Apache-2.0 | 仅用于理解 Root 形态，未打包代码 |

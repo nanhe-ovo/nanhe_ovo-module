@@ -37,6 +37,15 @@
       if (args[1] !== 'delete' && !validMode(args[1])) throw new Error('拒绝无效的模式名');
       return base + 'rule ' + args.map(quote).join(' ');
     }
+    if (action === 'thread' && args.length === 1) {
+      if (!['on', 'off'].includes(args[0])) throw new Error('拒绝无效的线程开关参数');
+      return base + 'thread ' + args[0];
+    }
+    if (action === 'threadrule' && args.length === 2) {
+      if (!validPackage(args[0])) throw new Error('拒绝无效的包名');
+      if (!['delete', 'ui', 'game', 'bg', 'full'].includes(args[1])) throw new Error('拒绝无效的线程预设');
+      return base + 'threadrule ' + args.map(quote).join(' ');
+    }
     if (action === 'freq' && args.length === 3) {
       if (!/^(cpu-policy\d+|gpu-\d+)$/.test(args[0])) throw new Error('拒绝无效的节点标识');
       if (!args.slice(1).every(x => /^\d+$/.test(String(x)) && Number.isSafeInteger(Number(x)) && Number(x) > 0)) throw new Error('拒绝无效的频率值');
@@ -107,6 +116,17 @@
     return rules;
   }
 
+  // 线程规则：块头注释 "# nanhe_threadrule pkg=<包名> preset=<预设>"，预设名与包名都做白名单校验。
+  function parseThreadRules(text) {
+    const rules = Object.create(null);
+    String(text).split(/\r?\n/).forEach(line => {
+      const m = line.match(/^#\s*nanhe_threadrule\s+pkg=(\S+)\s+preset=(\S+)$/);
+      if (!m) return;
+      if (validPackage(m[1]) && ['ui', 'game', 'bg', 'full'].includes(m[2])) rules[m[1]] = m[2];
+    });
+    return rules;
+  }
+
   function parseApps(text) {
     return [...new Set(String(text).split(/\r?\n/).map(s => s.trim()).filter(s => validPackage(s) && s !== '*' && s !== '-'))].sort();
   }
@@ -151,5 +171,5 @@
     return [String(min), String(max)];
   }
 
-  return { CONTROL, FALLBACK_MODES, command, exec, parseStatus, parseRules, parseApps, parseDeviceInfo, parseLogs, numbers, mhz, validateRange, validMode, validPackage };
+  return { CONTROL, FALLBACK_MODES, command, exec, parseStatus, parseRules, parseThreadRules, parseApps, parseDeviceInfo, parseLogs, numbers, mhz, validateRange, validMode, validPackage };
 });

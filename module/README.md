@@ -1,10 +1,10 @@
 # 南何ovo
 
-基于 [Uperf-Game-Turbo](https://github.com/yinwanxi/Uperf-Game-Turbo) 的性能调度模块（Magisk / KernelSU / APatch 通用可刷入 zip），内置一套 Miuix 观感的本地 WebUI（绿色「工作中」状态卡、纯白大圆角卡、底部悬浮液态玻璃胶囊导航）：切换全局性能模式、为单个应用绑定调度策略、直接控制 CPU / GPU 频率区间、调节屏幕刷新率，关于页展示机型与系统信息，并带一份自动记录的运行日志。
+基于 [Uperf-Game-Turbo](https://github.com/yinwanxi/Uperf-Game-Turbo) 的性能调度模块（Magisk / KernelSU / APatch 通用可刷入 zip），内置一套 Miuix 观感的本地 WebUI（绿色「工作中」状态卡、纯白大圆角卡、底部悬浮液态玻璃胶囊导航）：切换全局性能模式、为单个应用绑定调度策略、直接控制 CPU / GPU 频率区间、调节屏幕刷新率、线程调度（AppOptR 引擎，跟随模式自动切换档位，应用页可单应用绑定线程预设），关于页展示机型与系统信息，并带一份自动记录的运行日志。
 
 - 模块 ID：`nanhe_ovo`
-- 版本：`v1.6.0`（versionCode `202611181`）
-- 引擎：uperf（来自 Uperf-Game-Turbo，Apache-2.0）
+- 版本：`v1.7.0`（versionCode `202611191`）
+- 引擎：uperf（来自 Uperf-Game-Turbo，Apache-2.0）+ AppOptR（线程调度，GPL-3.0）
 - WebUI：纯本地 HTML/CSS/JS，无远程资源，不联网
 
 ## 安装
@@ -27,9 +27,9 @@
 
 | 页面 | 能力 |
 | --- | --- |
-| 总览 | 当前模式、可用模式列表（来自 `uperf.json` 的 `presets`）、CPU/GPU 实时频率、引擎运行状态、系统调优开关 |
+| 总览 | 当前模式、可用模式列表（来自 `uperf.json` 的 `presets`）、CPU/GPU 实时频率、引擎运行状态、系统调优开关、线程调度开关 |
 | 频率与显示 | 每个 CPU 策略 / GPU 节点的最低–最高频率，只能选设备上报的频率表；屏幕刷新率（30–240Hz，设备声明过的档位可选，未声明的置灰；读不到档位表时放开全部档位）；「刷新率管理」总开关（开启后强制固定上下限，关闭则完全不写系统设置）；一键恢复本次开机原始边界 |
-| 应用 | 默认规则 `*`、熄屏规则 `-`、任意已安装应用的调度策略（保存 / 删除） |
+| 应用 | 默认规则 `*`、熄屏规则 `-`、任意已安装应用的调度策略（保存 / 删除）；每个应用可再绑定线程预设（界面 / 游戏 / 后台 / 全核 / 不绑定） |
 | 关于 | 版本、机型与系统信息（设备 / 系统 / 硬件 / 内存 RAM / 内部存储 / 屏幕 / 电池）、运行日志（自动记录，可刷新 / 清空）、来源与许可、能力边界 |
 
 模式切换、规则写入都保持目标文件 inode 不变（写临时文件后覆盖内容），这样 uperf 的 inotify 能立即感知。每次写入前会留 `.bak`，写入后逐字校验回读，失败自动回滚。
@@ -60,6 +60,11 @@ sh /data/adb/modules/nanhe_ovo/script/control.sh rule com.example.game delete
 sh /data/adb/modules/nanhe_ovo/script/control.sh freq cpu-policy0 300000 1800000
 sh /data/adb/modules/nanhe_ovo/script/control.sh restore
 sh /data/adb/modules/nanhe_ovo/script/control.sh tune off
+sh /data/adb/modules/nanhe_ovo/script/control.sh thread on
+sh /data/adb/modules/nanhe_ovo/script/control.sh thread off
+sh /data/adb/modules/nanhe_ovo/script/control.sh threadrule com.example.game game
+sh /data/adb/modules/nanhe_ovo/script/control.sh threadrule com.example.game delete
+sh /data/adb/modules/nanhe_ovo/script/control.sh threadrules
 sh /data/adb/modules/nanhe_ovo/script/control.sh refresh 120 on
 sh /data/adb/modules/nanhe_ovo/script/control.sh refresh_manage off
 sh /data/adb/modules/nanhe_ovo/script/control.sh deviceinfo
@@ -72,6 +77,16 @@ sh /data/adb/modules/nanhe_ovo/script/control.sh deviceinfo
 默认开启，开机时执行 uperf 上游的 `powercfg_once.sh` / `platform_special.sh` / `miui_migt.sh`（压平厂商调度、处理温控进程等）。
 
 在面板关闭后只启动 uperf 引擎本身，不再改动厂商调度进程；改动**下次开机生效**。开关状态存于 `/data/adb/nanhe_ovo/tune_disabled`（存在即关闭）。
+
+## 线程调度（v1.7.0）
+
+线程引擎来自 **AppOptR**（作者 SutoLiu，GPL-3.0，https://gitee.com/sutoliu/AppOptR）：进程创建与线程改名时即时生效（eBPF，内核无 BTF 自动回退轮询模式），把线程按规则放进 /dev/cpuset 分组，不改频率、不改优先级。
+
+- **五档规则随模式自动切换**。`module/appopt/appopt_*.conf` 按省电 / 均衡 / 性能 / 极速 / 超频给出整套语义核规则（e-core / p-core / hp-core / all-core，由引擎按本机拓扑解析，跨平台可用）。省电档收紧大核使用（大核只给渲染与主线程、云音乐整包小核）；极速 / 超频档渲染线程固定大核、worker 共享中大核、IO 隔离中核。切换模式即重写 `active.conf`，引擎 inotify 热载，立即生效。
+- **超频档保核**。进入 crazy 时把每个 `core_ctl` 簇的 `min_cpus` 抬到 `max_cpus`（首次进入前记录本机基线到 `/data/adb/nanhe_ovo/corectl.<boot_id>.tsv`），防止热插拔与线程迁移抖动；退出 crazy 恢复基线。
+- **单应用线程绑定**。应用页每个应用可绑定线程预设：界面（渲染上大核）、游戏（主线程大核、渲染中核、IO 隔离）、后台（整包小核）、全核放开、不绑定。规则写入 `/data/adb/nanhe_ovo/thread/user.conf` 并并入 `active.conf`，保存后立即生效；块头带 `# nanhe_threadrule pkg=<包名> preset=<预设>` 标记，WebUI 靠它还原选中状态。
+- **首页总开关**。关闭时停止守护进程并清理 cpuset 分组，重启后也不会自动启动；开启时按当前模式重新生成配置并拉起引擎。
+- **双簇 / 单簇平台的已知退化**。8 Elite（2+6）这类只有两个簇、天玑 8500 这类单簇平台上，p-core / hp-core 语义核可能解析成空集，相关规则会被引擎跳过（只留下 e-core / all-core 生效）。本版以语义核规则交付、不做设备级数字回退；这类机型建议以「后台」「全核」预设为主，效果需要真机校准。
 
 ## 屏幕刷新率与开机锁 60Hz
 
@@ -130,12 +145,15 @@ sh /data/adb/modules/nanhe_ovo/script/control.sh deviceinfo
 10. **刷新率管理默认关闭**。新安装完全不碰系统刷新率；需要强制固定时在频率页打开「刷新率管理」并选择档位。v1.5.0 升级用户若已有 `refresh.txt`，会自动沿用并视为开启。
 11. **刷新率的持久化依赖开机脚本**。面板写入是即时生效，重启后由 `service.sh` 里的 `refresh_apply.sh` 重写；若管理器禁止模块开机自启或你手动禁用了模块服务，重启后就会回到系统自己的策略。
 12. **GPU 分模式窗口只抬下限**。脚本不改 `max_freq`、不升压、不突破出厂 OPP 表；厂商内核覆盖 `min_freq` 或节点名不同都可能让效果有限，回读不符只记日志。骁龙低分组配置属推测派活，需真机按调度曲线校准。
+13. **线程规则是静态放置，不改频率与优先级**。AppOptR 只把线程放进对应 cpuset 分组，实际升频仍由系统 DVFS / uperf 决定；双簇与单簇平台上语义核（p-core / hp-core）可能解析为空集，相关规则会被引擎跳过（见「线程调度」一节的已知退化）。
+14. **线程引擎需要内核支持**。cpuset 分组、eBPF 或 /proc 线程枚举在个别厂商内核上可能受限；引擎起不来时线程调度会显示「未运行」，不会影响 uperf 主调度。
 
 ## 卸载
 
 在管理器里卸载即可。`uninstall.sh` 会：
 
 - 把分应用规则备份到 `/sdcard/nanhe_ovo-perapp_powermode.txt` 后重建 `/sdcard/Android/yc/uperf`，避免丢失用户规则；
+- 停止线程引擎 AppOpt 并清理 `/dev/cpuset/nanhe_opt` 分组；
 - 只删除本模块写入的 `/data/powercfg.sh` / `/data/powercfg-base.sh`（带 `nanhe_ovo` 标记的才删）；
 - 按 `/data/adb/nanhe_ovo/refresh_orig.txt` 记录的原值还原 `peak_refresh_rate` / `min_refresh_rate`（原本没有该键就删除），不把改过的刷新率留给系统；
 - 删除运行时目录 `/data/adb/nanhe_ovo`。
@@ -152,9 +170,13 @@ nanhe_ovo/
 ├── system.prop              引擎需要的属性
 ├── bin/uperf                uperf 引擎（aarch64）
 ├── bin/busybox/busybox      busybox（aarch64）
+├── bin/appopt/              AppOptR 线程引擎（AppOpt + AppOpt-ebpf，aarch64，GPL-3.0）
+├── appopt/                  五档线程规则 + GPL-3.0 许可证文本
 ├── config/*.json            97 个平台配置 + template.json
 ├── script/
-│   ├── control.sh           WebUI 后端（status/freq/rule/mode/restore/tune/refresh/refresh_manage/deviceinfo）
+│   ├── control.sh           WebUI 后端（status/freq/rule/mode/restore/tune/refresh/refresh_manage/thread/threadrule/deviceinfo）
+│   ├── libthread.sh         线程引擎共享封装（档位生成、守护进程起停、crazy 保核）
+│   ├── thread_svc.sh        开机线程引擎服务（读当前模式并拉起 AppOpt）
 │   ├── refresh_apply.sh     开机应用刷新率（受总开关控制、补写两次、失败不影响开机）
 │   ├── gpu_profile.sh       天玑 Mali GPU 分模式频率窗口（只抬下限、不改上限）
 │   ├── initsvc.sh           启动流程（受 tune 开关控制）
@@ -170,9 +192,14 @@ nanhe_ovo/
 
 调度引擎、平台配置、启动脚本与 `system/vendor` 覆盖文件来自 **Uperf-Game-Turbo**（作者 Matt Yang / 吟惋兮），Apache License 2.0，原始声明保留在 `LICENSE` 与 `NOTICE`。
 
+线程调度引擎来自 **AppOptR**（作者 SutoLiu），GPL-3.0（https://gitee.com/sutoliu/AppOptR）；`bin/appopt/AppOpt`、`AppOpt-ebpf` 取自官方模块包原样分发，许可证全文见 `appopt/LICENSE-GPL3.txt`，`NOTICE` 亦有声明。
+
+本项目仓库：https://github.com/nanhe-ovo/nanhe_ovo-module
+
 本模块的改动部分：
 
 - 新增 `script/control.sh`（WebUI 后端）与 `webroot/` 全套面板；
+- v1.7.0 集成 AppOptR 线程引擎（GPL-3.0，出处与许可随包标注）：五档线程规则（`appopt/appopt_*.conf`）、`script/libthread.sh` + `script/thread_svc.sh`、后端 `thread` / `threadrule` / `threadrules` 命令、首页线程开关、应用页线程预设、crazy 档 core_ctl 保核与恢复、安装器引擎校验、卸载清理；
 - 新增 `customize.sh`（平台配置匹配 + `template.json` 兜底 + 冲突提示）；
 - `initsvc.sh` 增加系统调优开关与 `/data/powercfg.sh` 占用保护；
 - 新增 `script/refresh_apply.sh`（开机刷新率应用），`control.sh` 增加 `refresh` / `deviceinfo` 命令；

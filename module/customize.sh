@@ -25,7 +25,7 @@ note() { ui_print "- $1"; }
 # KernelSU / APatch 解包模块时不会还原 zip 里记录的可执行位，文件可能以 0644 落盘；
 # 因此「校验」必须排在「授权」之后，否则会把权限缺失误判成文件缺失。
 fix_perms() {
-    for f in "$MODPATH/bin/uperf" "$MODPATH"/bin/busybox/*; do
+    for f in "$MODPATH/bin/uperf" "$MODPATH"/bin/busybox/* "$MODPATH"/bin/appopt/*; do
         [ -f "$f" ] || continue
         chown 0:0 "$f" 2>/dev/null
         chmod 0755 "$f" 2>/dev/null
@@ -70,6 +70,7 @@ ensure_engine() {
 
 ui_print "* 南何ovo ${VERSION} · 性能调度与频率面板"
 ui_print "* 引擎来源：Uperf-Game-Turbo（Apache-2.0）"
+ui_print "* 线程引擎：AppOptR（SutoLiu，GPL-3.0，gitee.com/sutoliu/AppOptR）"
 ui_print "* 请勿同时安装其它 uperf 类模块，也不要自行切换 CPU 调速器"
 ui_print ""
 
@@ -127,6 +128,13 @@ fi
 chmod 0755 "$MODPATH/bin/busybox/busybox" 2>/dev/null
 [ -x "$MODPATH/bin/busybox/busybox" ] || abort "! busybox 无法执行：chmod 0755 失败"
 
+# --- 线程引擎（AppOptR，GPL-3.0）---
+if [ ! -s "$MODPATH/bin/appopt/AppOpt" ]; then
+    abort "! 模块内缺少线程引擎 bin/appopt/AppOpt，安装包不完整（请用完整 zip 重刷）"
+fi
+chmod 0755 "$MODPATH/bin/appopt/AppOpt" "$MODPATH/bin/appopt/AppOpt-ebpf" 2>/dev/null
+"$MODPATH/bin/appopt/AppOpt" -v >/dev/null 2>&1 || abort "! 线程引擎 AppOpt 无法执行（二进制损坏或与本机不兼容）"
+
 [ -f "$MODPATH/script/control.sh" ] || abort "! 模块内缺少 WebUI 后端 script/control.sh"
 [ -f "$MODPATH/webroot/index.html" ] || abort "! 模块内缺少 WebUI 页面，安装包不完整"
 
@@ -178,4 +186,5 @@ ui_print "* 打开 WebUI：KernelSU / APatch 管理器 → 模块 → 南何ovo 
 ui_print "* Magisk 本体没有模块 WebUI，可用 KsuWebUIStandalone 等工具打开同一页面"
 ui_print "* 便携控制：sh /data/powercfg.sh balance"
 ui_print "* 分应用规则：/sdcard/Android/yc/uperf/perapp_powermode.txt"
+ui_print "* 线程调度跟随首页模式切换，应用页可为单个应用绑定线程预设"
 ui_print "* 首次重启后请先打开 WebUI 确认模式列表与频率节点"

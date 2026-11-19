@@ -36,6 +36,9 @@
     'info\tmode\tbalance',
     'info\tmodes\tpowersave balance performance fast crazy',
     'info\tuperf\t未运行',
+    'info\tthread\t未运行',
+    'info\tthread_manage\ton',
+    'info\tthread_profile\tbalance',
     'info\trefresh\t120',
     'info\trefresh_target\t120',
     'info\trefresh_pin\toff',
@@ -48,6 +51,16 @@
     'device\tgpu-0\tGPU 0（kgsl-3d0）\tHz\t200000000\t800000000\t400000000\t200000000 400000000 600000000 800000000',
   ].join('\n');
   const DEMO_RULES = '* balance\n- powersave\ncom.example.game performance';
+  // 演示用的线程规则：结构与后端 threadrules 输出一致（块头注释 + 规则块）。
+  const DEMO_THREAD = '# nanhe_threadrule pkg=com.example.game preset=game\ncom.example.game=p-core {\n\tUnityMain=hp-core\n\tRenderThread*=p-core\n\tFAsyncLoading=e-core,p-core\n\tAudioTrack=e-core\n}\n';
+  // 线程预设展示文案；delete 为「不绑定」。
+  const THREAD_PRESETS = {
+    ui: ['界面', '渲染上大核，其余小中核'],
+    game: ['游戏', '主线程大核，渲染中核，IO 隔离'],
+    bg: ['后台', '整包压小核省电'],
+    full: ['全核', '放开全部核心'],
+    delete: ['不绑定', '删除该应用的线程规则'],
+  };
   // 演示用的日志样例：结构与后端 logs 输出一致（log / 时间 / 级别 / 标签 / 正文）。
   const DEMO_LOGS = [
     ['2026-11-16 00:21:08', 'info', 'refresh', '已应用 120Hz（下限额on）'],
@@ -57,7 +70,7 @@
   const state = {
     live: false, demo: true, busy: false, confirming: false,
     status: C.parseStatus(DEMO), apps: ['com.android.settings', 'com.example.reader', 'com.example.game'],
-    rules: C.parseRules(DEMO_RULES), deviceInfo: [], logs: DEMO_LOGS.slice(), limit: 60,
+    rules: C.parseRules(DEMO_RULES), threadrules: C.parseThreadRules(DEMO_THREAD), deviceInfo: [], logs: DEMO_LOGS.slice(), limit: 60,
     logged: Object.create(null),
   };
 
@@ -73,6 +86,7 @@
     document.body.classList.toggle('busy', value);
     $('refresh').disabled = value || state.confirming;
     $('tune-switch').disabled = value || state.confirming || !state.live;
+    $('thread-switch').disabled = value || state.confirming || !state.live;
     $('pin-switch').disabled = value || state.confirming || !state.live || !canPin();
     document.querySelectorAll('[data-write]').forEach(n => {
       n.disabled = value || state.confirming || !state.live || n.dataset.unavailable === 'true';
@@ -84,12 +98,14 @@
   function modeName(mode) { return mode ? meta(mode)[0] : '未设置'; }
   function currentMode() { const info = state.status.info; return info.mode || ''; }
   function tuneOn() { return state.status.info.tune === '开启'; }
+  function threadOn() { return state.status.info.thread_manage !== 'off'; }
 
   function demo() {
     state.live = false; state.demo = true;
     state.status = C.parseStatus(DEMO);
     state.apps = ['com.android.settings', 'com.example.reader', 'com.example.game'];
     state.rules = C.parseRules(DEMO_RULES);
+    state.threadrules = C.parseThreadRules(DEMO_THREAD);
     state.deviceInfo = [];
     state.logs = DEMO_LOGS.slice();
     state.logged = Object.create(null);
@@ -126,15 +142,19 @@
     state.status = parsed;
     const warnings = status.stderr.trim() ? [status.stderr.trim()] : [];
 
-    let apps = null, rules = null;
+    let apps = null, rules = null, threadrules = null;
     try { apps = await C.exec(window, C.command('apps')); }
     catch (error) { warnings.push('应用清单读取失败：' + error.message); }
     try { rules = await C.exec(window, C.command('rules')); }
     catch (error) { warnings.push('分应用规则读取失败：' + error.message); }
+    try { threadrules = await C.exec(window, C.command('threadrules')); }
+    catch (error) { warnings.push('线程规则读取失败：' + error.message); }
     if (apps) { state.apps = C.parseApps(apps.stdout); if (apps.stderr.trim()) warnings.push(apps.stderr.trim()); }
     else state.apps = [];
     if (rules) { state.rules = C.parseRules(rules.stdout); if (rules.stderr.trim()) warnings.push(rules.stderr.trim()); }
     else state.rules = Object.create(null);
+    if (threadrules) { state.threadrules = C.parseThreadRules(threadrules.stdout); if (threadrules.stderr.trim()) warnings.push(threadrules.stderr.trim()); }
+    else state.threadrules = Object.create(null);
 
     let devinfo = null;
     try { devinfo = await C.exec(window, C.command('deviceinfo')); }
@@ -309,6 +329,7 @@
     if (!modes.length) grid.append(el('p', 'empty', '后端没有报告可用的性能模式，请检查 uperf.json。'));
     $('mode-badge').textContent = (state.demo ? '演示 · ' : state.live ? '当前 · ' : '上次读取 · ') + modeName(currentMode());
     $('tune-switch').setAttribute('aria-checked', String(tuneOn()));
+    $('thread-switch').setAttribute('aria-checked', String(threadOn()));
   }
 
   function renderSummary() {
@@ -334,9 +355,10 @@
     const names = {
       device_config: '平台配置', version: '模块版本', mode: '当前模式', modes: '可用模式',
       uperf: '调度引擎', tune: '系统调优', baseline: '频率基线', config: '配置文件',
+      thread: '线程调度', thread_profile: '线程档位',
       boot_id: '启动批次', service: '服务状态', backend: '后端', root: 'Root 方案',
     };
-    const order = ['root', 'mode', 'version', 'uperf', 'baseline', 'tune', 'device_config'];
+    const order = ['root', 'mode', 'version', 'uperf', 'thread', 'thread_profile', 'baseline', 'tune', 'device_config'];
     Object.entries(state.status.info)
       .filter(([key]) => order.indexOf(key) >= 0)
       .sort((a, b) => (order.indexOf(a[0]) + 1 || 99) - (order.indexOf(b[0]) + 1 || 99))
@@ -344,6 +366,7 @@
         const row = el('div', 'kv');
         let text = value;
         if (key === 'mode') text = modeName(value);
+        if (key === 'thread_profile') text = modeName(value);
         if (key === 'modes') text = state.status.modes.map(modeName).join(' · ') || '未报告';
         row.append(el('span', 'k', names[key] || key), el('span', 'v', text));
         info.append(row);
@@ -446,6 +469,32 @@
       (special ? '\n这是特殊规则，删除后由 uperf 默认行为处理。' : '\n该应用将按默认规则处理。'), 'rule', [pkg, 'delete']));
     controls.append(select, save, remove);
     row.append(controls);
+    if (!special) {
+      const tcontrols = el('div', 'rule-controls');
+      tcontrols.append(el('span', 'rule-tag', '线程'));
+      const tselect = el('select');
+      tselect.dataset.write = '';
+      tselect.setAttribute('aria-label', pkg + ' 线程绑定预设');
+      Object.keys(THREAD_PRESETS).forEach(key => {
+        const option = el('option', '', THREAD_PRESETS[key][0]);
+        option.value = key;
+        tselect.append(option);
+      });
+      tselect.value = state.threadrules[pkg] || 'delete';
+      const tsave = el('button', 'primary-button', '保存');
+      tsave.type = 'button'; tsave.dataset.write = '';
+      tsave.addEventListener('click', () => {
+        if (!tselect.value) { notice('没有可用的线程预设。', true); return; }
+        const meta = THREAD_PRESETS[tselect.value];
+        if (tselect.value === 'delete') {
+          mutate('解除线程绑定？', pkg + '\n删除该应用的线程规则，恢复为跟随全局档位。', 'threadrule', [pkg, 'delete']);
+        } else {
+          mutate('绑定线程预设？', pkg + '\n线程预设「' + meta[0] + '」：' + meta[1] + '。\n预设由 AppOptR 引擎按本机拓扑实时解析（语义核 e/p/hp-core），保存后立即生效。', 'threadrule', [pkg, tselect.value]);
+        }
+      });
+      tcontrols.append(tselect, tsave);
+      row.append(tcontrols);
+    }
     return row;
   }
 
@@ -554,6 +603,14 @@
     mutate(next ? '开启系统调优？' : '关闭系统调优？',
       next ? '开机会执行厂商调度压平与温控进程处理（uperf 上游行为），下次开机生效。' : '开机会跳过厂商调度压平与温控处理，只启动 uperf 引擎，下次开机生效。',
       'tune', [next ? 'on' : 'off']);
+  });
+  $('thread-switch').addEventListener('click', () => {
+    const next = !threadOn();
+    mutate(next ? '开启线程调度？' : '关闭线程调度？',
+      next
+        ? '启动 AppOptR 线程引擎（SutoLiu，GPL-3.0）：按当前性能模式加载线程档位，并应用已保存的单应用线程绑定，立即生效。'
+        : '停止线程守护进程并清理 cpuset 分组；此后线程位置完全交给系统，重启后也不会自动启动。',
+      'thread', [next ? 'on' : 'off']);
   });
   $('pin-switch').addEventListener('click', () => {
     const r = refreshInfo();

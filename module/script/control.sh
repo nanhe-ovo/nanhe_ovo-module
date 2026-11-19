@@ -29,6 +29,7 @@ LOG_ONCE=/data/adb/nanhe_ovo/.log_once
 LOG_MAX=200
 TUNE_FLAG=/data/adb/nanhe_ovo/tune_disabled
 MODULE=/data/adb/modules/nanhe_ovo
+. "$MODULE/script/libthread.sh"
 UPERF=/sdcard/Android/yc/uperf
 LOCKED=0
 TX_ACTIVE=0
@@ -173,6 +174,10 @@ init() {
     WORK="$RUNTIME/work.$$"
     mkdir "$WORK" || fail 'cannot create private work directory'
     BASELINE="$RUNTIME/baseline.$BOOT.tsv"
+    [ ! -L "$THREAD_ROOT" ] || fail 'thread runtime must not be a symlink'
+    [ -d "$THREAD_ROOT" ] || mkdir "$THREAD_ROOT" || fail 'cannot create thread runtime'
+    [ "$(stat -c %u "$THREAD_ROOT" 2>/dev/null)" = 0 ] || fail 'thread runtime must belong to root'
+    chmod 700 "$THREAD_ROOT" || fail 'cannot secure thread runtime directory'
 }
 
 freq_table() {
@@ -452,6 +457,23 @@ cmd_mode() {
     fi
     sh "$MODULE/script/gpu_profile.sh" "$1" >/dev/null 2>&1 ||
         log_write warn gpu 'GPU 分模式窗口应用失败，已保留当前节点值'
+    # 线程档位同步：重生成 active.conf（保持 inode 覆盖，AppOptR 的 inotify 立即热载）
+    if thread_gen_conf "$1"; then
+        log_write info thread "线程规则已切换到 ${1} 档并热载"
+    else
+        log_write warn thread '线程规则档位生成失败，沿用旧配置'
+    fi
+    # crazy 档保核：进入时 min_cpus=max_cpus 防热插拔抖动；退出时恢复本机基线
+    if [ "$1" = crazy ]; then
+        if thread_corectl_pin "$BOOT"; then
+            log_write info thread '超频档：core_ctl 保核已开启（min_cpus=max_cpus，退出时恢复基线）'
+        else
+            log_write warn thread 'core_ctl 保核失败或本机没有可写的热插拔节点'
+        fi
+    elif [ "$CM_PREV" = crazy ]; then
+        thread_corectl_unpin "$BOOT" >/dev/null 2>&1 ||
+            log_write warn thread 'core_ctl 基线恢复失败，min_cpus 可能未还原'
+    fi
     printf 'ok\tmode\t%s\n' "$1"
 }
 cmd_tune() {
@@ -832,6 +854,63 @@ susfs_state() {
     if [ -f /data/adb/modules/susfs_guard_lkm/module.prop ]; then printf '未加载（SUSFS Guard 已安装）'; return 0; fi
     printf '未安装'
 }
+# ---------------------------------------------------------------- 线程调度
+# 引擎：AppOptR（SutoLiu，GPL-3.0，https://gitee.com/sutoliu/AppOptR）
+# 单应用线程预设：ui=界面加速 game=游戏调度 bg=后台小核 full=全核放开 delete=移除
+valid_thread_preset() {
+    case "$1" in ui|game|bg|full|delete) return 0;; *) return 1;; esac
+}
+# 预设 → AppOptR 规则块（语义核由引擎按本机拓扑解析，跨平台可用）
+threadrule_block() { # $1: package  $2: preset
+    TRB_PKG=$1 TRB_P=$2
+    printf '# nanhe_threadrule pkg=%s preset=%s\n' "$TRB_PKG" "$TRB_P"
+    case "$TRB_P" in
+        ui)   printf '%s=e-core,p-core {\n\tRenderThread=hp-core\n}\n' "$TRB_PKG" ;;
+        game) printf '%s=p-core {\n\tUnityMain=hp-core\n\tGameThread=hp-core\n\tUnityGfxDeviceW=p-core\n\tRenderThread*=p-core\n\tRHIThread=p-core\n\tThread-*=p-core\n\tJob.worker*=p-core\n\tTaskGraphNP*=p-core\n\tFAsyncLoading=e-core,p-core\n\tAudioTrack=e-core\n}\n' "$TRB_PKG" ;;
+        bg)   printf '%s=e-core\n' "$TRB_PKG" ;;
+        full) printf '%s=all-core\n' "$TRB_PKG" ;;
+    esac
+}
+cmd_thread() {
+    [ ! -L "$THREAD_DISABLED" ] || { err 'thread switch symlink refused'; return 1; }
+    case "$1" in
+        on)
+            rm -f "$THREAD_DISABLED" || { err 'cannot enable thread engine'; return 1; }
+            TH_CUR=$(cat "$UPERF/cur_powermode.txt" 2>/dev/null)
+            valid_mode "$TH_CUR" || TH_CUR=balance
+            thread_gen_conf "$TH_CUR" || { err 'cannot generate thread config'; return 1; }
+            thread_start || log_write warn thread 'AppOpt 启动失败（二进制缺失或无执行权限）'
+            printf 'ok\tthread\ton\n' ;;
+        off)
+            : > "$THREAD_DISABLED" || { err 'cannot disable thread engine'; return 1; }
+            thread_stop
+            log_write info thread '线程调度已关闭（守护进程已停止，cpuset 分组已尽力清理）'
+            printf 'ok\tthread\toff\n' ;;
+    esac
+}
+cmd_threadrule() {
+    valid_package "$1" || { err 'invalid package selector'; return 1; }
+    valid_thread_preset "$2" || { err 'invalid thread preset'; return 1; }
+    [ ! -L "$THREAD_USER" ] || { err 'thread rules symlink refused'; return 1; }
+    if [ -e "$THREAD_USER" ]; then
+        [ -f "$THREAD_USER" ] && [ -r "$THREAD_USER" ] || { err 'cannot read thread rules'; return 1; }
+        # 移除该包已有的整块规则（块头带 nanhe_threadrule 标记，块体行跟随跳过）
+        awk -v pkg="$1" '
+            /^# nanhe_threadrule pkg=/ { skip = (index($0, "pkg=" pkg " ") > 0); next }
+            { if (!skip) print }
+        ' "$THREAD_USER" > "$WORK/text.new" || return 1
+    else : > "$WORK/text.new" || return 1
+    fi
+    if [ "$2" != delete ]; then
+        threadrule_block "$1" "$2" >> "$WORK/text.new" || return 1
+    fi
+    commit_text "$THREAD_USER" "$WORK/text.new" || return 1
+    # 立即并入 active.conf（保持 inode 覆盖，inotify 热载）
+    TH_CUR=$(cat "$UPERF/cur_powermode.txt" 2>/dev/null)
+    valid_mode "$TH_CUR" || TH_CUR=balance
+    thread_gen_conf "$TH_CUR" || { err 'thread config regenerate failed'; return 1; }
+    printf 'ok\tthreadrule\t%s\t%s\n' "$1" "$2"
+}
 cmd_status() {
     discover
     printf 'info\tboot_id\t%s\n' "$BOOT"
@@ -851,6 +930,9 @@ cmd_status() {
         if pidof uperf >/dev/null 2>&1; then UP=运行中; else UP=未运行; fi
     fi
     printf 'info\tuperf\t%s\n' "$UP"
+    printf 'info\tthread\t%s\n' "$(thread_report)"
+    printf 'info\tthread_manage\t%s\n' "$(thread_manage_state)"
+    printf 'info\tthread_profile\t%s\n' "$(thread_profile)"
     RT_RATE=$(refresh_current)
     RT_TARGET=$(refresh_target)
     RT_TABLE=$(refresh_table)
@@ -881,10 +963,13 @@ cmd_status() {
 }
 
 # 在任何特权文件操作之前先校验参数数量与基本语法。
-[ "$#" -gt 0 ] || fail 'usage: control.sh status|apps|rules|deviceinfo|logs|clearlog|logline LEVEL TAG MSG|restore|freq ID MIN MAX|rule PACKAGE MODE|mode MODE|tune on|off|refresh HZ on|off|refresh_manage on|off'
+[ "$#" -gt 0 ] || fail 'usage: control.sh status|apps|rules|threadrules|deviceinfo|logs|clearlog|logline LEVEL TAG MSG|restore|freq ID MIN MAX|rule PACKAGE MODE|threadrule PACKAGE PRESET|thread on|off|mode MODE|tune on|off|refresh HZ on|off|refresh_manage on|off'
 CMD=$1; shift
 case "$CMD:$#" in
-    status:0|restore:0|apps:0|rules:0|deviceinfo:0|logs:0|clearlog:0) ;;
+    status:0|restore:0|apps:0|rules:0|threadrules:0|deviceinfo:0|logs:0|clearlog:0) ;;
+    thread:1) case "$1" in on|off) ;; *) fail 'invalid thread switch';; esac;;
+    threadrule:2) valid_package "$1" || fail 'invalid package selector'
+        valid_thread_preset "$2" || fail 'invalid thread preset';;
     logline:3) case "$1" in info|warn|error) ;; *) fail 'invalid log level';; esac
         case "$2" in ''|*[!a-z0-9_.-]*) fail 'invalid log tag';; esac
         [ -n "$3" ] || fail 'empty log message';;
@@ -903,6 +988,8 @@ case "$CMD" in
     status) cmd_status;; freq) cmd_freq "$@";; restore) cmd_restore;;
     apps) list_packages;;
     rules) [ -f "$UPERF/perapp_powermode.txt" ] || fail 'rules file missing'; cat "$UPERF/perapp_powermode.txt";;
+    threadrules) [ -f "$THREAD_USER" ] && cat "$THREAD_USER";;
+    thread) cmd_thread "$@";; threadrule) cmd_threadrule "$@";;
     deviceinfo) cmd_deviceinfo;;
     logs) cmd_logs;; logline) cmd_logline "$@";; clearlog) cmd_clearlog;;
     rule) cmd_rule "$@";; mode) cmd_mode "$@";; tune) cmd_tune "$@";; refresh) cmd_refresh "$@";;

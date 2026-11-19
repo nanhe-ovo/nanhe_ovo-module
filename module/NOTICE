@@ -5,6 +5,18 @@ Do Not Translate or Localize
 
 This project incorporates components from the projects listed below. The original copyright notices and the licenses under are set forth below. Reserves all rights not expressly granted herein, whether by implication, estoppel or otherwise.
 
+0.	南何ovo（本模块，https://github.com/nanhe-ovo/nanhe_ovo-module）
+
+	A.	Uperf-Game-Turbo（Apache-2.0，https://github.com/yinwanxi/Uperf-Game-Turbo）
+		调度引擎、平台配置与启动流程来自该项目；其 LICENSE 与下述第三方组件声明随模块分发。
+
+	B.	AppOptR（GPL-3.0，作者 SutoLiu，https://gitee.com/sutoliu/AppOptR）
+		线程调度引擎；bin/appopt/AppOpt 与 bin/appopt/AppOpt-ebpf 取自 AppOptR 官方模块包，
+		规则文件与启动脚本在本模块内二次封装。GPL-3.0 许可证全文见 appopt/LICENSE-GPL3.txt，
+		对应源码见上游仓库（AppOpt、AppOpt-ebpf）。
+
+以下为 Uperf-Game-Turbo 上游携带的第三方组件声明：
+
 1.	jpcre2/jpcre2 version 10.32.01 (https://github.com/jpcre2/jpcre2)
 2.	nlohmann/json version 3.10.4 (https://github.com/nlohmann/json)
 3.	PhilipHazel/pcre2 version 10.39 (https://github.com/PhilipHazel/pcre2)

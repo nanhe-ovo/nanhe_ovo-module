@@ -39,6 +39,7 @@
         <div class="section-title"><h2>性能模式</h2><span>全局即时切换</span></div>
         <div id="mode-grid" class="mode-grid"></div>
         <div class="switch-row"><div><h2>系统调优</h2><p>开机会压掉厂商调度与温控进程；关闭后只启动 uperf 引擎。改动下次开机生效。</p></div><button id="tune-switch" class="switch" type="button" role="switch" aria-checked="false" aria-label="系统调优开关" disabled></button></div>
+        <div class="switch-row"><div><h2>线程调度</h2><p>AppOptR 线程引擎（SutoLiu，GPL-3.0）：档位跟随性能模式自动切换，应用页可为单个应用绑定线程预设。省电档收紧大核使用，超频档保核并固定渲染线程。</p></div><button id="thread-switch" class="switch" type="button" role="switch" aria-checked="false" aria-label="线程调度开关" disabled></button></div>
         <div class="section-title"><h2>运行快照</h2><a href="#frequency">管理频率 ↗</a></div>
         <div id="device-summary" class="summary-grid"></div>
         <p class="footnote">频率设置只作用于内核节点，不提供开机持久化。</p>
@@ -64,7 +65,7 @@
         <article class="card"><div class="section-title inside"><h2>特殊场景</h2><span>uperf 规则</span></div><p class="muted">默认规则 * 与熄屏规则 - 各自独立可编辑。</p><div id="special-rules"></div></article>
         <div class="section-title"><h2>应用调度策略</h2><span id="app-count">0 个包</span></div>
         <label class="search-field"><span aria-hidden="true">⌕</span><input id="app-search" type="search" placeholder="搜索应用包名" autocomplete="off" aria-label="搜索应用包名"></label>
-        <p class="list-note">未设置的应用跟随默认规则；保存只改动所选包。规则写入后由 uperf 在前台切换时读取。</p>
+        <p class="list-note">未设置的应用跟随默认规则；保存只改动所选包。线程预设由 AppOptR 引擎实时生效，调度策略由 uperf 在前台切换时读取。</p>
         <div id="app-list" class="app-list"></div>
       </section>
 
@@ -88,6 +89,10 @@
           <p>底栏玻璃参照 <a href="https://github.com/Kyant0/AndroidLiquidGlass" target="_blank" rel="noopener noreferrer">Kyant0/AndroidLiquidGlass</a>（Compose Multiplatform 的 Backdrop 库）的要素实现：背景模糊与饱和度提升、边缘折射带（顶部被拉伸变亮、底部被压缩变暗，厚度 16px）、左右各 2px 红/青色散、跟随手指的镜面高光、按下时的弹性收缩；再按 Glass Bottom Bar 的配方组合（vibrancy + 小半径模糊 + lens 折射 + 半透白 surface）。当前页的圆形玻璃镜片会在四格之间滑动，页面滚动时底栏也会轻微倾斜、拉伸再回位。这些在本页面用 CSS 的 <code>backdrop-filter</code>、渐变与内阴影近似：<strong>不是像素级折射</strong>（那需要 Shader 逐像素重采样背景），本面板也不引入任何外部资源；不支持 <code>backdrop-filter</code> 的旧 WebView 会把底栏回退成不透明胶囊。</p>
           <h2>引擎来源</h2>
           <p>调度引擎、平台配置与启动流程来自 <strong>Uperf-Game-Turbo</strong>（作者 Matt Yang / 吟惋兮，Apache-2.0），模块内的 <code>LICENSE</code> 与 <code>NOTICE</code> 保留了原始声明。</p>
+          <h2>线程引擎来源</h2>
+          <p>线程调度引擎来自 <strong>AppOptR</strong>（作者 SutoLiu，GPL-3.0）：按本机拓扑实时解析 e-core / p-core / hp-core 语义核，进程创建与线程改名即时生效，内核无 BTF 时自动回退轮询模式。出处：<a href="https://gitee.com/sutoliu/AppOptR" target="_blank" rel="noopener noreferrer">gitee.com/sutoliu/AppOptR ↗</a>，GPL-3.0 许可证文本随模块分发（<code>appopt/LICENSE-GPL3.txt</code>）。</p>
+          <h2>本项目</h2>
+          <p>源码与版本更新发布在 <a href="https://github.com/nanhe-ovo/nanhe_ovo-module" target="_blank" rel="noopener noreferrer">github.com/nanhe-ovo/nanhe_ovo-module ↗</a>。</p>
           <h2>管理器与权限</h2>
           <p>需要支持模块 WebUI 且提供 KernelSU 官方 callback 执行桥接的管理器（KernelSU / APatch 等），并授予 Root。Magisk 本体没有模块 WebUI，可用 KsuWebUIStandalone 一类工具打开同一页面。Root 不可用时只展示只读演示，绝不伪造写入成功。</p>
           <h2>能力与安全边界</h2>

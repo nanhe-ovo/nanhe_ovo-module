@@ -101,7 +101,7 @@ make_fixture() {
     mkdir -p "$D/bin"
     printf '#!/bin/sh\necho 0\n' > "$D/bin/id"
     printf '#!/bin/sh\nif [ "$1" = "-c" ] && [ "$2" = "%%u" ]; then echo 0; exit 0; fi\nexec %s "$@"\n' "$REAL_STAT" > "$D/bin/stat"
-    printf '#!/bin/sh\nif [ -f "%s/uperf.running" ]; then echo 4242; exit 0; fi\nexit 1\n' "$D" > "$D/bin/pidof"
+    printf '#!/bin/sh\nif [ "$1" = AppOpt ]; then\n if [ -f "%s/appopt.running" ]; then echo 7777; exit 0; fi\n exit 1\nfi\nif [ -f "%s/uperf.running" ]; then echo 4242; exit 0; fi\nexit 1\n' "$D" "$D" > "$D/bin/pidof"
     printf '#!/bin/sh\nprintf "package:com.android.settings\\npackage:com.example.game\\njunk\\npackage:\\npackage:com.example.reader\\n"\n' > "$D/bin/pm"
     # 屏幕 / 机型信息相关的系统命令桩
     printf '#!/bin/sh\n[ -f "%s/dumpsys_silent" ] && exit 0\n[ -f "%s/dumpsys_variant" ] && { cat "%s/dumpsys_variant"; exit 0; }\ncase "$1" in\n display) printf "DisplayDeviceInfo{name=Built-in, supportedModes [{id=1, width=1880, height=3008, fps=60.000004}, {id=2, width=1880, height=3008, fps=120.0}, {id=3, width=1880, height=3008, fps=144.0}, {id=4, fps=480.0}]}\\n" ;;\n SurfaceFlinger) printf "Display 0: refresh-rate: 120.000000 Hz\\n" ;;\n battery) printf "Current Battery Service state:\\n  level: 82\\n  temperature: 350\\n  health: 2\\n  status: 2\\n  technology: Li-poly\\n" ;;\nesac\n' "$D" "$D" "$D" > "$D/bin/dumpsys"
@@ -138,6 +138,31 @@ make_fixture() {
         -e "s#/sys/#$D/sys/#g" \
         "$MODULE/script/gpu_profile.sh" > "$D/data/adb/modules/nanhe_ovo/script/gpu_profile.sh"
     chmod +x "$D/data/adb/modules/nanhe_ovo/script/gpu_profile.sh"
+    # 线程引擎封装库与开机服务副本：与后端同套路径替换
+    sed -e "s#/data/adb/modules/nanhe_ovo#$D/data/adb/modules/nanhe_ovo#g" \
+        -e "s#/data/adb/nanhe_ovo#$D/data/adb/nanhe_ovo#g" \
+        -e "s#/sdcard#$D/sdcard#g" \
+        -e "s#/sys/#$D/sys/#g" \
+        "$MODULE/script/libthread.sh" > "$D/data/adb/modules/nanhe_ovo/script/libthread.sh"
+    sed -e "s#/data/adb/modules/nanhe_ovo#$D/data/adb/modules/nanhe_ovo#g" \
+        -e "s#/data/adb/nanhe_ovo#$D/data/adb/nanhe_ovo#g" \
+        -e "s#/sdcard#$D/sdcard#g" \
+        -e "s#/sys/#$D/sys/#g" \
+        "$MODULE/script/thread_svc.sh" > "$D/data/adb/modules/nanhe_ovo/script/thread_svc.sh"
+    chmod +x "$D/data/adb/modules/nanhe_ovo/script/libthread.sh" "$D/data/adb/modules/nanhe_ovo/script/thread_svc.sh"
+    # 五档线程规则与许可证
+    mkdir -p "$D/data/adb/modules/nanhe_ovo/appopt"
+    cp "$MODULE"/appopt/appopt_*.conf "$D/data/adb/modules/nanhe_ovo/appopt/" 2>/dev/null
+    cp "$MODULE/appopt/LICENSE-GPL3.txt" "$D/data/adb/modules/nanhe_ovo/appopt/" 2>/dev/null
+    # AppOpt 桩：记录调用参数后退出（真机二进制不能在宿主机上执行）
+    mkdir -p "$D/data/adb/modules/nanhe_ovo/bin/appopt"
+    printf '#!/bin/sh\necho "$@" > "%s/appopt.invoked"\nexit 0\n' "$D" > "$D/data/adb/modules/nanhe_ovo/bin/appopt/AppOpt"
+    cp "$D/data/adb/modules/nanhe_ovo/bin/appopt/AppOpt" "$D/data/adb/modules/nanhe_ovo/bin/appopt/AppOpt-ebpf"
+    chmod +x "$D/data/adb/modules/nanhe_ovo/bin/appopt/"*
+    # crazy 档保核夹具：cpu0 簇 min=4 / max=6
+    mkdir -p "$D/sys/devices/system/cpu/cpu0/core_ctl"
+    printf '%s\n' 4 > "$D/sys/devices/system/cpu/cpu0/core_ctl/min_cpus"
+    printf '%s\n' 6 > "$D/sys/devices/system/cpu/cpu0/core_ctl/max_cpus"
     grep -q "PATH=$D/bin:$HOST_PATH" "$D/control.sh" ||
         bad "后端 PATH 行未被替换（control.sh 的内部 PATH 写法已变动，桩命令无法生效）"
     grep -q "sys/kernel/random/boot_id" "$D/control.sh" &&
@@ -504,6 +529,10 @@ make_install() {
     D=$1; plat=$2; abi=$3; MODP=$4
     rm -rf "$D"; mkdir -p "$D/bin"
     cp -a "$MODULE" "$MODP"
+    # AppOpt 真机二进制不能在宿主机执行：换成桩，只验证安装器校验逻辑
+    printf '#!/bin/sh\nexit 0\n' > "$MODP/bin/appopt/AppOpt"
+    cp "$MODP/bin/appopt/AppOpt" "$MODP/bin/appopt/AppOpt-ebpf"
+    chmod +x "$MODP/bin/appopt/AppOpt" "$MODP/bin/appopt/AppOpt-ebpf"
     sed -i \
         -e "s#/data/adb/nanhe_ovo#$D/data/adb/nanhe_ovo#g" \
         -e "s#/data/adb/modules#$D/data/adb/modules#g" \
@@ -565,6 +594,13 @@ has "提示安装包不完整" "$OUT" "安装包不完整"
 
 printf '\n'
 make_install "$INST" gs201 arm64-v8a "$INST/mod"
+rm -rf "$INST/mod/bin/appopt"
+run_install
+[ "$RC" != 0 ] && ok "缺少 AppOpt 引擎时拒绝安装" || bad "缺 AppOpt 仍安装"
+has "提示缺少线程引擎" "$OUT" "线程引擎"
+
+printf '\n'
+make_install "$INST" gs201 arm64-v8a "$INST/mod"
 rm -f "$INST/mod/webroot/index.html"
 run_install
 [ "$RC" != 0 ] && ok "缺少 WebUI 时拒绝安装" || bad "缺 WebUI 仍安装"
@@ -577,6 +613,8 @@ run_install
 eq "解包丢失可执行位仍安装成功" "$RC" 0
 eq "安装后引擎恢复 0755" "755" "$(stat -c %a "$INST/mod/bin/uperf")"
 eq "安装后 busybox 可执行" "yes" "$([ -x "$INST/mod/bin/busybox/busybox" ] && echo yes || echo no)"
+eq "安装后线程引擎恢复 0755" "755" "$(stat -c %a "$INST/mod/bin/appopt/AppOpt")"
+eq "安装后线程引擎可执行" "yes" "$([ -x "$INST/mod/bin/appopt/AppOpt" ] && echo yes || echo no)"
 eq "安装后后端脚本可执行" "yes" "$([ -x "$INST/mod/script/control.sh" ] && echo yes || echo no)"
 hasnt "权限缺失不再误报缺少引擎" "$OUT" "缺少 bin/uperf"
 
@@ -774,6 +812,90 @@ eq "非法 GPU 模式静默跳过且不改动" "300000000" "$(cat "$MALI/min_fre
 rm -f "$MALI/available_frequencies"
 GP_RUN performance
 eq "无 OPP 表时不构造频点" "300000000" "$(cat "$MALI/min_freq")"
+
+printf '\n== 线程引擎（v1.7.0，AppOptR GPL-3.0）==\n'
+[ -f "$MODULE/bin/appopt/AppOpt" ] && [ -s "$MODULE/bin/appopt/AppOpt" ] && ok "AppOpt 二进制已随模块分发" || bad "缺少 AppOpt 二进制"
+[ -f "$MODULE/bin/appopt/AppOpt-ebpf" ] && ok "AppOpt-ebpf 已随模块分发" || bad "缺少 AppOpt-ebpf"
+[ -f "$MODULE/appopt/LICENSE-GPL3.txt" ] && ok "GPL-3.0 许可证随包分发" || bad "缺少 GPL-3.0 许可证"
+for p in powersave balance performance fast crazy; do
+    [ -f "$MODULE/appopt/appopt_$p.conf" ] && ok "五档规则 $p 存在" || bad "缺少 appopt_$p.conf"
+done
+has "service.sh 拉起线程服务" "$(cat "$MODULE/service.sh")" "thread_svc.sh"
+has "uninstall.sh 清理线程引擎" "$(cat "$MODULE/uninstall.sh")" "/dev/cpuset/nanhe_opt"
+has "NOTICE 标注 AppOptR 出处" "$(cat "$MODULE/NOTICE")" "gitee.com/sutoliu/AppOptR"
+
+THR="$RR/thread"
+: > "$D/appopt.running"
+run_ctl status
+eq "线程引擎默认运行中（开机服务拉起）" "运行中" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="thread"{print $3}')"
+eq "线程开关默认 on" "on" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="thread_manage"{print $3}')"
+eq "线程档位随当前模式" "balance" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="thread_profile"{print $3}')"
+rm -f "$D/appopt.running"
+
+run_ctl thread on
+eq "开启线程引擎退出 0" "$RC" 0
+eq "开启返回 ok" "ok	thread	on" "$OUT"
+eq "开启后无禁用标记" "no" "$([ -f "$RR/thread_disabled" ] && echo yes || echo no)"
+eq "active.conf 已生成" "yes" "$([ -f "$THR/active.conf" ] && echo yes || echo no)"
+has "档位规则并入 active.conf" "$(cat "$THR/active.conf")" "surfaceflinger=all-core"
+has "AppOpt 已被拉起" "$(cat "$D/appopt.invoked" 2>/dev/null)" "-b nanhe_opt"
+has "AppOpt 参数指向 active.conf" "$(cat "$D/appopt.invoked" 2>/dev/null)" "-c $THR/active.conf"
+run_ctl thread maybe
+[ "$RC" != 0 ] && ok "非法线程开关参数被拒绝" || bad "非法参数被接受"
+
+printf '\n== 线程规则（单应用绑定）==\n'
+run_ctl threadrule com.example.game game
+eq "绑定游戏预设退出 0" "$RC" 0
+eq "绑定返回 ok" "ok	threadrule	com.example.game	game" "$OUT"
+has "块头标记已写入" "$(cat "$THR/user.conf")" "# nanhe_threadrule pkg=com.example.game preset=game"
+has "游戏规则块内容" "$(cat "$THR/user.conf")" "UnityMain=hp-core"
+has "规则已并入 active.conf" "$(cat "$THR/active.conf")" "nanhe_threadrule pkg=com.example.game"
+run_ctl threadrules
+eq "threadrules 退出 0" "$RC" 0
+has "threadrules 返回块头" "$OUT" "# nanhe_threadrule pkg=com.example.game preset=game"
+run_ctl threadrule com.example.game ui
+eq "同一包更新预设" "$(grep -c 'nanhe_threadrule pkg=com.example.game' "$THR/user.conf")" 1
+has "预设已更新为 ui" "$(cat "$THR/user.conf")" "preset=ui"
+run_ctl threadrule com.example.game delete
+eq "解除绑定退出 0" "$RC" 0
+hasnt "块头已删除" "$(cat "$THR/user.conf")" "com.example.game"
+hasnt "active.conf 同步删除" "$(cat "$THR/active.conf")" "nanhe_threadrule pkg=com.example.game"
+run_ctl threadrule 'bad pkg' game
+[ "$RC" != 0 ] && ok "非法包名被拒绝" || bad "非法包名被接受"
+run_ctl threadrule com.example.game turbo
+[ "$RC" != 0 ] && ok "非法预设被拒绝" || bad "非法预设被接受"
+rm -f "$THR/user.conf"
+ln -s /tmp/not-here "$THR/user.conf"
+run_ctl threadrule com.example.game bg
+[ "$RC" != 0 ] && ok "user.conf 为符号链接时拒绝" || bad "符号链接未被拒绝"
+rm -f "$THR/user.conf"
+
+printf '\n== crazy 档保核与线程档位联动 ==\n'
+run_ctl mode crazy
+eq "进入 crazy 后 min_cpus 抬到 max" "6" "$(cat "$D/sys/devices/system/cpu/cpu0/core_ctl/min_cpus")"
+eq "保核基线已记录" "yes" "$([ -f "$RR/corectl.aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.tsv" ] && echo yes || echo no)"
+run_ctl status
+eq "线程档位随超频档切换" "crazy" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="thread_profile"{print $3}')"
+has "超频档渲染线程固定大核" "$(cat "$THR/active.conf")" "RenderThread*=hp-core"
+run_ctl mode balance
+eq "退出 crazy 后恢复基线 min_cpus" "4" "$(cat "$D/sys/devices/system/cpu/cpu0/core_ctl/min_cpus")"
+run_ctl status
+eq "线程档位随退出恢复 balance" "balance" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="thread_profile"{print $3}')"
+
+printf '\n== 线程总开关 ==\n'
+run_ctl thread off
+eq "关闭线程引擎退出 0" "$RC" 0
+eq "禁用标记已写入" "yes" "$([ -f "$RR/thread_disabled" ] && echo yes || echo no)"
+run_ctl status
+eq "关闭后状态为已关闭" "已关闭" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="thread"{print $3}')"
+eq "关闭后开关为 off" "off" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="thread_manage"{print $3}')"
+run_ctl thread on
+eq "重新开启退出 0" "$RC" 0
+eq "重新开启后无禁用标记" "no" "$([ -f "$RR/thread_disabled" ] && echo yes || echo no)"
+: > "$D/appopt.running"
+run_ctl status
+eq "重新开启后状态恢复运行中" "运行中" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="thread"{print $3}')"
+rm -f "$D/appopt.running"
 
 ########################################
 # 汇总

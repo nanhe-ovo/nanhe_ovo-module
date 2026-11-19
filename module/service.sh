@@ -8,3 +8,6 @@ sh "$MODDIR/script/initsvc.sh"
 
 # 解锁后应用屏幕刷新率：抵消部分机型开机锁 60Hz 与静止回落
 sh "$MODDIR/script/refresh_apply.sh"
+
+# 线程调度引擎：AppOptR（SutoLiu，GPL-3.0，https://gitee.com/sutoliu/AppOptR）
+sh "$MODDIR/script/thread_svc.sh"

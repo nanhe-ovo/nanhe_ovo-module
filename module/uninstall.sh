@@ -53,6 +53,14 @@ on_remove() {
         esac
     fi
 
+    # 停止线程引擎（AppOptR，GPL-3.0）并清理 cpuset 分组与运行时数据
+    APPOpt_PID=$(pidof AppOpt 2>/dev/null)
+    case "$APPOpt_PID" in ''|*[!0-9' ']*) ;; *) kill $APPOpt_PID 2>/dev/null;; esac
+    if [ -d /dev/cpuset/nanhe_opt ]; then
+        rmdir /dev/cpuset/nanhe_opt/* 2>/dev/null
+        rmdir /dev/cpuset/nanhe_opt 2>/dev/null
+    fi
+
     rm -rf /data/adb/nanhe_ovo
 }
 

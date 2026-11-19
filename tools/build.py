@@ -9,14 +9,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 MODULE = ROOT / "module"
 DIST = ROOT / "dist"
-STAMP = (2026, 11, 18, 0, 0, 0)
-VERSION = "v1.6.0"
-BUILD = "20261118"
+STAMP = (2026, 11, 19, 0, 0, 0)
+VERSION = "v1.7.0"
+BUILD = "20261119"
 ZIP_NAME = f"nanhe_ovo-{VERSION}-{BUILD}.zip"
 SRC_NAME = f"nanhe_ovo-src-{VERSION}.zip"
 
 TEXT_EXT = {".sh", ".prop", ".md", ".json", ".txt", ".html", ".css", ".js", ".cjs", ".py", ".xml"}
-EXEC_FILES = {"bin/uperf", "bin/busybox/busybox", "META-INF/com/google/android/update-binary"}
+EXEC_FILES = {"bin/uperf", "bin/busybox/busybox", "bin/appopt/AppOpt", "bin/appopt/AppOpt-ebpf", "META-INF/com/google/android/update-binary"}
 
 
 def payload(path: Path) -> bytes:

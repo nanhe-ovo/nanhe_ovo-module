@@ -1,5 +1,13 @@
 # 更新日志
 
+## v1.9.4（2026-11-21）
+
+- 按真机 topo 校准天玑 9500：簇结构 1+3+4 不变，最高 / 中 / 小簇典型频率改为 4.21 / 3.50 / 2.70 GHz（原 3.73 / 2.90 / 2.60），typicalPower 同步重标为 4.2 / 2.9 / 1.25 W；前台 cpuset 改为 `0-3,4-7`，不再跳过 cpu3。
+- 重写天玑 9300：由 4+4 改为真机 1+3+4（0-3 @ 2.0 GHz / 4-6 @ 2.85 GHz / 7 @ 3.25 GHz）；新增 `mtd9300plus` 独立配置（最高核 3.40 GHz）。9300 与 9300+ 按实测 policy 最高频自动区分，不再共用两簇模型。
+- `topo_config_ok()` 增加簇数校验：powerModel 组数必须等于实测 policy 数，超线程平台按 cpumask 逻辑核豁免；配置与真机簇结构不符时不再静默通过。
+- crazy 档上限写入支持双接口：优先写标准 `scaling_max_freq`，被内核拒绝或回读不符时自动改走 MTK 用户上限接口（`/proc/ppm/policy/hard_userlimit_max_cpu_freq`、`/proc/cpufreq/cpufreq_limits`）；成功写入的 cluster 记录在 `boost_ppm`，恢复基线时逐条写 0 释放。
+- 日志区分两个接口的失败原因并保留 stderr 摘要；boost 汇总行说明实际使用的接口顺序。
+
 ## v1.9.3（2026-11-21）
 
 - 补全 2020+ 移动端 SoC 推测配置：新增 sdm870、sdm7g2、sdm7g3、Exynos 2500/2600、Tensor G5、麒麟 9030/9050、天玑 7300/7400、玄戒 O1/O3 共 12 份；全量 110 份配置做核数与 cpumask 一致性校验，修复 Exynos 2700 的簇序与 cpumask 缺失。

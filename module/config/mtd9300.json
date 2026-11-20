@@ -1,6 +1,6 @@
 {
     "meta": {
-        "name": "Dimensity 9300 (mt6989) [推测,26.11.17]",
+        "name": "Dimensity 9300 (mt6989)[推测,26.11.21]",
         "author": "南何ovo 推算（非官方调参表，需真机校准）"
     },
     "modules": {
@@ -47,13 +47,22 @@
                     "freeFreq": 0.6
                 },
                 {
-                    "efficiency": 450,
-                    "nr": 4,
-                    "typicalPower": 2.4,
+                    "efficiency": 480,
+                    "nr": 3,
+                    "typicalPower": 2.0,
+                    "typicalFreq": 2.85,
+                    "sweetFreq": 2.3,
+                    "plainFreq": 1.6,
+                    "freeFreq": 0.9
+                },
+                {
+                    "efficiency": 620,
+                    "nr": 1,
+                    "typicalPower": 2.8,
                     "typicalFreq": 3.25,
-                    "sweetFreq": 2.44,
-                    "plainFreq": 1.79,
-                    "freeFreq": 0.97
+                    "sweetFreq": 2.7,
+                    "plainFreq": 1.8,
+                    "freeFreq": 1.0
                 }
             ]
         },
@@ -90,13 +99,9 @@
                 "c1": [
                     4,
                     5,
-                    6,
-                    7
+                    6
                 ],
                 "c2": [
-                    4,
-                    5,
-                    6,
                     7
                 ]
             },

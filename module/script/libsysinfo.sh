@@ -140,6 +140,17 @@ _get_kona_type() {
     esac
 }
 
+_get_mt6989_type() {
+    # mt6989 同时承载 9300 / 9300+，两者同为 1+3+4，只有最高核频率不同
+    # （9300 3.25GHz / 9300+ 3.40GHz），按实测 policy 最高频区分。
+    _mt9=$(topo_max_freq)
+    if [ "${_mt9:-0}" -ge 3350000 ] 2>/dev/null; then
+        echo "mtd9300plus"
+    else
+        echo "mtd9300"
+    fi
+}
+
 _get_xring_type() {
     case "$(getprop ro.soc.model 2>/dev/null)" in
         *O3*|*o3*) echo "xring_o3" ;;
@@ -241,7 +252,7 @@ get_config_name() {    case "$1" in
     "mt6897") echo "mtd8300" ;;
     "mt6983") echo "mtd9000" ;;
     "mt6985") echo "mtd9200" ;;
-    "mt6989") echo "mtd9300" ;;
+    "mt6989") echo "$(_get_mt6989_type)" ;;
     "mt6899") echo "mtd8400" ;;
     "mt6991") echo "mtd9400" ;;
     "mt6993") echo "mtd9500s" ;;  # Dimensity 9500 / 9500s
@@ -336,7 +347,7 @@ get_config_name_by_model() {
         MT6994*) echo mtd9600m ;;
         MT6995*) echo mtd9600pro ;;
         MT6991*) echo mtd9400 ;;
-        MT6989*) echo mtd9300 ;;
+        MT6989*) echo "$(_get_mt6989_type)" ;;
         MT6880*) echo mtd7300 ;;
         GS501*|LAGUNA*) echo gs501 ;;
         XRING*O3*) echo xring_o3 ;;
@@ -360,16 +371,18 @@ topo_nr_core() {
     printf '%s\n' "$_tn" | awk -F, '{n=0; for(i=1;i<=NF;i++){if($i ~ /-/){split($i,a,"-"); n+=a[2]-a[1]+1} else n++}} END{print n+0}'
 }
 
-# 所有 policy 的最高频（kHz）
+# 所有 policy 的最高频（kHz）；按编号探测，避免调用方 set -f 时 glob 不展开
 topo_max_freq() {
-    _tm=
-    for _td in /sys/devices/system/cpu/cpufreq/policy*; do
+    _tm=0; _ti=0
+    while [ "$_ti" -lt 32 ]; do
+        _td="/sys/devices/system/cpu/cpufreq/policy$_ti"
+        _ti=$((_ti + 1))
         [ -d "$_td" ] || continue
         _tf=$(cat "$_td/cpuinfo_max_freq" 2>/dev/null)
         case "$_tf" in ''|*[!0-9]*) continue;; esac
-        if [ -z "$_tm" ] || [ "$_tf" -gt "$_tm" ]; then _tm=$_tf; fi
+        [ "$_tf" -gt "$_tm" ] && _tm=$_tf
     done
-    printf '%s' "${_tm:-0}"
+    printf '%s' "$_tm"
 }
 
 # 配置文件的核数（powerModel 的 nr 之和）
@@ -424,13 +437,24 @@ topo_config_ok() {
     _on=$(topo_nr_core); _om=$(topo_max_freq)
     _cn=$(config_nr "$_oc")
     _ca=$(config_cpumask_nr "$_oc")
+    case "$_ca" in ''|*[!0-9]*) _ca=0;; esac
     [ "$_cn" -gt 0 ] || return 1
     # 普通平台按 powerModel 核数；超线程平台（powerModel 按物理核）按 cpumask 逻辑核
-    [ "$_on" -eq "$_cn" ] || [ "$_on" -eq "$_ca" ] || return 1
+    if [ "$_on" -ne "$_cn" ]; then
+        [ "$_ca" -gt 0 ] && [ "$_on" -eq "$_ca" ] || return 1
+    fi
     [ "$_om" -gt 0 ] || return 1
     _ol=$(topo_freq_list); _cl=$(config_freq_list "$_oc")
     _nsp=$(printf '%s' "$_ol" | wc -w | tr -d ' ')
     [ "$_nsp" -gt 0 ] || return 1
+    # 簇数必须相符：powerModel 组数 = 实测 policy 数。
+    # 超线程平台（cpumask 逻辑核多于 powerModel 物理核）豁免，按物理簇比对会误判。
+    _cnp=$(awk '/"nr"/ {n++} END{print n+0}' "$_oc")
+    if [ "$_ca" -gt "$_cn" ]; then
+        :
+    elif [ "$_cnp" -gt 0 ] && [ "$_cnp" -ne "$_nsp" ]; then
+        return 1
+    fi
     _od=$(freq_dist "$_ol" "$_cl")
     # 逐簇频率差的平均值不超过 20% 才算同一平台
     [ $(( _od * 100 )) -le $(( _om * 20 * _nsp )) ] || return 1

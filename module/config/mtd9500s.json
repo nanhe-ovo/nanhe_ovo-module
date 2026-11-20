@@ -1,6 +1,6 @@
 {
     "meta": {
-        "name": "Dimensity 9500s[推测,26.11.17]",
+        "name": "Dimensity 9500[推测,26.11.21]",
         "author": "南何ovo 推算（非官方调参表）"
     },
     "modules": {
@@ -40,29 +40,29 @@
                 {
                     "efficiency": 620,
                     "nr": 1,
-                    "typicalPower": 3.4,
-                    "typicalFreq": 3.73,
-                    "sweetFreq": 2.7,
-                    "plainFreq": 1.8,
-                    "freeFreq": 1.2
+                    "typicalPower": 4.2,
+                    "typicalFreq": 4.21,
+                    "sweetFreq": 3.6,
+                    "plainFreq": 2.6,
+                    "freeFreq": 1.5
                 },
                 {
                     "efficiency": 480,
                     "nr": 3,
-                    "typicalPower": 2.2,
-                    "typicalFreq": 2.9,
-                    "sweetFreq": 2.0,
-                    "plainFreq": 1.3,
-                    "freeFreq": 0.8
+                    "typicalPower": 2.9,
+                    "typicalFreq": 3.5,
+                    "sweetFreq": 2.9,
+                    "plainFreq": 1.9,
+                    "freeFreq": 1.1
                 },
                 {
                     "efficiency": 260,
                     "nr": 4,
-                    "typicalPower": 1.1,
-                    "typicalFreq": 2.6,
-                    "sweetFreq": 1.8,
-                    "plainFreq": 1.1,
-                    "freeFreq": 0.7
+                    "typicalPower": 1.25,
+                    "typicalFreq": 2.7,
+                    "sweetFreq": 2.1,
+                    "plainFreq": 1.3,
+                    "freeFreq": 0.8
                 }
             ]
         },
@@ -448,7 +448,7 @@
         },
         "sysfs": {
             "cpusetTa": "0-7",
-            "cpusetFg": "0-2,4-7",
+            "cpusetFg": "0-3,4-7",
             "cpusetBg": "0-3",
             "cpusetSysBg": "0-3",
             "cpusetRe": "0-6",

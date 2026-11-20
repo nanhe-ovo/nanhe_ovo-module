@@ -28,6 +28,12 @@ LOG_FILE=/data/adb/nanhe_ovo/log.txt
 LOG_ONCE=/data/adb/nanhe_ovo/.log_once
 LOG_MAX=200
 TUNE_FLAG=/data/adb/nanhe_ovo/tune_disabled
+# 超频上限的两个写入口：标准 cpufreq 节点优先，MTK 用户上限接口兜底。
+# PPM 与旧版 cpufreq_limits 都按 "<cluster> <kHz>" 写；boost_ppm 记录写过的 cluster，
+# 恢复基线时按记录逐条写 0 释放，避免清掉系统自己下发的限制。
+PPM_MAX=/proc/ppm/policy/hard_userlimit_max_cpu_freq
+CPUFREQ_LIMITS=/proc/cpufreq/cpufreq_limits
+BOOST_PPM_STATE=/data/adb/nanhe_ovo/boost_ppm
 MODULE=/data/adb/modules/nanhe_ovo
 . "$MODULE/script/libthread.sh"
 UPERF=/sdcard/Android/yc/uperf
@@ -302,6 +308,8 @@ cmd_freq() {
 cmd_restore() {
     [ -f "$BASELINE" ] && [ ! -L "$BASELINE" ] || { err 'no baseline for this boot'; return 1; }
     discover
+    # 先释放 MTK 用户上限：否则 PPM 会把 scaling_max_freq 立刻压回，基线写入看似成功但不生效
+    boost_vendor_clear || :
     : > "$WORK/journal" || return 1
     : > "$WORK/restore" || return 1
     # 逐条校验保存的记录，绝不执行保存的路径
@@ -428,13 +436,55 @@ cmd_rule() {
     commit_text "$RULES" "$WORK/text.new" || return 1
     printf 'ok\trule\t%s\t%s\n' "$1" "$2"
 }
+# 标准 cpufreq 上限：写 scaling_max_freq 并回读确认真实生效
+boost_scaling_write() { # $1: policy 路径  $2: 目标 kHz
+    BS_NODE="$1/$MAX_NODE"
+    chmod u+w "$BS_NODE" 2>/dev/null || :
+    # 2> 必须在 > node 之前，否则打开节点失败时 stderr 还没接上，boost.err 为空。
+    printf '%s\n' "$2" 2>"$WORK/boost.err" > "$BS_NODE" || return 1
+    BS_READ=$(read_num "$BS_NODE") || return 1
+    [ "$BS_READ" = "$2" ]
+}
+
+# MTK 用户上限：PPM / 旧版 cpufreq_limits，格式 "<cluster> <kHz>"。
+# 写完后仍以 policy 的 scaling_max_freq 回读为准，避免接口接受写入但没下发到 cpufreq。
+boost_vendor_write() { # $1: cluster 序号  $2: 目标 kHz  $3: policy 路径
+    for BV_NODE in "$PPM_MAX" "$CPUFREQ_LIMITS"; do
+        [ -e "$BV_NODE" ] || continue
+        printf '%s %s\n' "$1" "$2" 2>>"$WORK/boost.err" > "$BV_NODE" || continue
+        BV_READ=$(read_num "$3/$MAX_NODE") || continue
+        [ "$BV_READ" = "$2" ] || continue
+        printf '%s\n' "$1" >> "$BOOST_PPM_STATE" 2>/dev/null || :
+        BOOST_VIA=$BV_NODE
+        return 0
+    done
+    return 1
+}
+
+# 释放之前写过的 MTK 用户上限；只清自己记录过的 cluster，不动系统原有策略
+boost_vendor_clear() {
+    [ -f "$BOOST_PPM_STATE" ] || return 0
+    while read -r BV_C; do
+        case "$BV_C" in ''|*[!0-9]*) continue;; esac
+        for BV_NODE in "$PPM_MAX" "$CPUFREQ_LIMITS"; do
+            [ -e "$BV_NODE" ] || continue
+            printf '%s 0\n' "$BV_C" > "$BV_NODE" 2>/dev/null || :
+        done
+    done < "$BOOST_PPM_STATE"
+    rm -f "$BOOST_PPM_STATE" 2>/dev/null || :
+    return 0
+}
+
 # 超频模式（crazy）：把每个可写 CPU 集群的上限推到频率表最高档。
+# 接口一写标准 scaling_max_freq；被内核拒绝或回读不符时，自动改走 MTK 用户上限接口。
 # 只写上限、单台独立尝试；失败按原因分类记日志并跳过，不中断模式切换。
 apply_crazy_boost() {
     discover
-    BOOSTED=0
+    boost_vendor_clear || :
+    BOOSTED=0; BI_IDX=-1
     while IFS="$(printf '\t')" read -r BL_ID BL_PATH BL_LABEL BL_UNIT; do
         case "$BL_ID" in cpu-*) ;; *) continue;; esac
+        BI_IDX=$((BI_IDX + 1))
         nodes_for "$BL_ID" || continue
         BL_TABLE=$(freq_table "$BL_PATH/scaling_available_frequencies")
         [ -n "$BL_TABLE" ] || continue
@@ -443,27 +493,29 @@ apply_crazy_boost() {
         BL_NOW=$(read_num "$BL_PATH/$MAX_NODE") || continue
         is_freq "$BL_NOW" || continue
         [ "$BL_NOW" = "$BL_TARGET" ] && continue
-        # 2> 必须在 > node 之前，否则打开节点失败时 stderr 还没接上，boost.err 为空。
-        chmod u+w "$BL_PATH/$MAX_NODE" 2>/dev/null || :
-        if printf '%s\n' "$BL_TARGET" 2>"$WORK/boost.err" > "$BL_PATH/$MAX_NODE"; then
-            BL_READ=$(read_num "$BL_PATH/$MAX_NODE") || BL_READ=
-            if [ "$BL_READ" = "$BL_TARGET" ]; then
-                log_write info boost "$BL_ID: 上限 $BL_NOW → $BL_TARGET（表内最高档，不超出厂上限）"
-                BOOSTED=$((BOOSTED + 1))
-            else
-                log_write warn boost "$BL_ID: 写入后回读不符（当前 $BL_READ），已跳过"
-            fi
-        else
-            BL_MSG=$(log_sane "$(sed 's/^[^:]*: *//' "$WORK/boost.err" | head -n 1)")
-            [ -n "$BL_MSG" ] || BL_MSG='写入被内核或 SELinux 拒绝，未返回错误详情'
-            case "$BL_MSG" in
-                *"Permission denied"*) log_write warn boost "$BL_ID: 上限节点被内核/SELinux 设为只读，无法推高（已跳过）";;
-                *"No such file"*|*"not exist"*) log_write warn boost "$BL_ID: 频率节点不存在，已跳过";;
-                *) log_write warn boost "$BL_ID: 写上限失败（$BL_MSG），已跳过";;
-            esac
+        : > "$WORK/boost.err" 2>/dev/null || :
+        # 接口一：标准 cpufreq 上限节点
+        if boost_scaling_write "$BL_PATH" "$BL_TARGET"; then
+            log_write info boost "$BL_ID: 上限 $BL_NOW → $BL_TARGET（表内最高档，不超出厂上限）"
+            BOOSTED=$((BOOSTED + 1))
+            continue
         fi
+        # 接口二：MTK 用户上限；PPM 与 cpufreq_limits 依次探测
+        BOOST_VIA=
+        if boost_vendor_write "$BI_IDX" "$BL_TARGET" "$BL_PATH"; then
+            log_write info boost "$BL_ID: 上限 $BL_NOW → $BL_TARGET（标准节点未接受，已走 ${BOOST_VIA}）"
+            BOOSTED=$((BOOSTED + 1))
+            continue
+        fi
+        BL_MSG=$(log_sane "$(sed 's/^[^:]*: *//' "$WORK/boost.err" 2>/dev/null | head -n 1)")
+        [ -n "$BL_MSG" ] || BL_MSG='标准节点与 MTK 用户上限接口均被内核拒绝，未返回错误详情'
+        case "$BL_MSG" in
+            *"Permission denied"*) log_write warn boost "$BL_ID: 上限节点只读，两个接口都写不进去（已跳过）";;
+            *"No such file"*|*"not exist"*) log_write warn boost "$BL_ID: 频率节点不存在，已跳过";;
+            *) log_write warn boost "$BL_ID: 写上限失败（$BL_MSG），已跳过";;
+        esac
     done < "$WORK/devices"
-    log_write info boost "超频模式：已尝试推高 $BOOSTED 个集群上限到表内最高档，其余按日志跳过"
+    log_write info boost "超频模式：已推高 $BOOSTED 个集群上限（标准接口优先，MTK 用户上限兜底）"
     return 0
 }
 cmd_mode() {

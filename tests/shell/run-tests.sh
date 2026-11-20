@@ -293,9 +293,9 @@ RB="$WORK/rb"
 make_fixture "$RB"
 chattr +i "$RB/sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq" 2>/dev/null && ROLLBACK_SETUP=chattr
 if [ "$ROLLBACK_SETUP" = no ] && [ "$("$REAL_ID" -u)" != 0 ]; then
-    chmod 440 "$RB/sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq" && ROLLBACK_SETUP=chmod
+    ROLLBACK_SETUP=skip
 fi
-if [ "$ROLLBACK_SETUP" = no ]; then
+if [ "$ROLLBACK_SETUP" != chattr ]; then
     skip "回滚路径（当前环境无法模拟只读节点：root + 无 chattr）"
 else
     RBCTL="$RB/control.sh"
@@ -888,7 +888,7 @@ eq "开启线程引擎退出 0" "$RC" 0
 eq "开启返回 ok" "ok	thread	on" "$OUT"
 eq "开启后无禁用标记" "no" "$([ -f "$RR/thread_disabled" ] && echo yes || echo no)"
 eq "active.conf 已生成" "yes" "$([ -f "$THR/active.conf" ] && echo yes || echo no)"
-has "档位规则并入 active.conf" "$(cat "$THR/active.conf")" "surfaceflinger=0-7"
+has "档位规则并入 active.conf" "$(cat "$THR/active.conf")" "surfaceflinger=0-3,4-7"
 hasnt "active.conf 不再残留语义核名" "$(cat "$THR/active.conf")" "=hp-core"
 hasnt "active.conf 不再残留 e-core" "$(cat "$THR/active.conf")" "=e-core"
 i=0
@@ -903,7 +903,7 @@ run_ctl threadrule com.example.game game
 eq "绑定游戏预设退出 0" "$RC" 0
 eq "绑定返回 ok" "ok	threadrule	com.example.game	game" "$OUT"
 has "块头标记已写入" "$(cat "$THR/user.conf")" "# nanhe_threadrule pkg=com.example.game preset=game"
-has "游戏主线程落在最高频核" "$(cat "$THR/user.conf")" "UnityMain=7"
+has "游戏主线程落在最高频核" "$(cat "$THR/user.conf")" "UnityMain=6-7"
 has "渲染线程落在大簇" "$(cat "$THR/user.conf")" "RenderThread*=4-7"
 has "worker 线程跨低簇与大簇" "$(cat "$THR/user.conf")" "Thread-*=0-3,4-7"
 hasnt "user.conf 不残留语义核名" "$(cat "$THR/user.conf")" "hp-core"
@@ -963,8 +963,8 @@ topo_case 2p4p2 '1800000:0,1 2400000:2,3,4,5 3200000:6,7' '0-7|0-1|2-5|7|1'
 
 printf '\n== crazy 档保核与线程档位联动 ==\n'
 run_ctl mode crazy
-eq "进入 crazy 后 min_cpus 抬到 max" "$(cat "$FAKE/sys/devices/system/cpu/cpu0/core_ctl/min_cpus")" "6"
-eq "保核基线已记录" "yes" "$([ -f "$RR/corectl.aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.tsv" ] && echo yes || echo no)"
+eq "进入 crazy 后默认不保核（min_cpus 保持基线）" "$(cat "$FAKE/sys/devices/system/cpu/cpu0/core_ctl/min_cpus")" "4"
+eq "保核基线未写入（默认关闭）" "no" "$([ -f "$RR/corectl.aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.tsv" ] && echo yes || echo no)"
 run_ctl status
 eq "线程档位随超频档切换" "crazy" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="thread_profile"{print $3}')"
 has "超频档渲染线程固定大核" "$(cat "$THR/active.conf")" "RenderThread*=7"

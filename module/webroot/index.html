@@ -18,7 +18,7 @@
     </header>
     <main>
       <div class="page-heading"><div><p class="eyebrow">PERFORMANCE SCHEDULER</p><h1 id="page-title">设备总览</h1></div><button id="refresh" class="text-button" type="button">↻ 刷新</button></div>
-      <div id="connection" class="connection" role="status"><span class="status-dot"></span><span id="connection-text">正在检查 Root 与桥接…</span></div>
+      <div id="connection" class="connection" role="status"><span class="status-dot"></span><span id="connection-text">正在检查模块状态与桥接…</span></div>
       <div id="notice" class="notice" role="alert" hidden><span id="notice-text"></span><button id="dismiss-notice" type="button" aria-label="关闭提示">×</button></div>
 
       <section id="page-overview" class="page" aria-labelledby="overview-heading">
@@ -26,7 +26,7 @@
         <article id="status-card" class="status-card" data-state="idle" aria-live="polite">
           <div class="status-top"><span id="status-tag" class="status-tag">待机</span></div>
           <h2 id="overview-heading">待机</h2>
-          <p class="status-root">Root：<span id="status-root">读取中</span></p>
+          <p class="status-module">模块：<span id="status-module">读取中</span></p>
           <p class="status-sub"><span id="mode-badge">等待状态</span> · <span id="status-version">v-</span> · <span id="last-update">尚未刷新</span></p>
           <svg class="status-mark" viewBox="0 0 200 200" aria-hidden="true" focusable="false"><circle cx="100" cy="100" r="86" fill="none" stroke="currentColor" stroke-width="14"/><path d="M58 104l30 30 58-64" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </article>

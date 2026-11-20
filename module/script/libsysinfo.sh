@@ -132,6 +132,21 @@ _get_kalama_type() {
     fi
 }
 
+_get_kona_type() {
+    # kona 同时承载 865 / 865+ / 870；只有 870 的 ro.soc.model 带 AC 后缀。
+    case "$(getprop ro.soc.model 2>/dev/null)" in
+        SM8250-AC|SM8250AC|sm8250-ac) echo "sdm870" ;;
+        *) echo "sdm865" ;;
+    esac
+}
+
+_get_xring_type() {
+    case "$(getprop ro.soc.model 2>/dev/null)" in
+        *O3*|*o3*) echo "xring_o3" ;;
+        *) echo "xring_o1" ;;
+    esac
+}
+
 # $1:board_name
 get_config_name() {    case "$1" in
     "pineapple") echo "$(_get_pinekala_type)" ;;
@@ -141,17 +156,19 @@ get_config_name() {    case "$1" in
     "shima") echo "$(_get_lahaina_type)" ;;
     "yupik") echo "sdm7g2p" ;;
     "sm7475") echo "sdm7g2p" ;;
+    "sm7550") echo "sdm7g3" ;;  # Snapdragon 7 Gen 3
     "sun") echo "sdm8elite" ;;
     "sm8755") echo "sdm8elite" ;;
     "manila") echo "sdm8sgen3" ;;
     "sm8635") echo "sdm8sgen3" ;;
     "sm6450") echo "sdm6g1" ;;
-    "kona") echo "sdm865" ;;    # 865, 870
+    "kona") echo "$(_get_kona_type)" ;;
     "msmnile") echo "sdm855" ;; # 855, 860
     "sdm845") echo "sdm845" ;;
     "lito") echo "$(_get_sdm76x_type)" ;;
     "sm6150") echo "$(_get_sm6150_type)" ;;
     "holi") echo "sdm695" ;;
+    "xring") echo "$(_get_xring_type)" ;;  # 玄戒 O1 / O3
     "sdm710") echo "sdm710" ;;
     "msm8939") echo "sdm616" ;;
     "msm8916") echo "sdm616" ;;
@@ -168,7 +185,7 @@ get_config_name() {    case "$1" in
     "sdm636") echo "sdm660" ;;
     "trinket") echo "sdm665" ;; # sdm665
     "bengal") echo "sdm680" ;;  # sdm662
-    "msm8956") echo "sdm650" ;;
+    "msm8956") echo "sdm653" ;;
     "msm8998") echo "sdm835" ;;
     "msm8996") echo "sdm820" ;;
     "msm8909") echo "sdm210" ;;
@@ -183,6 +200,8 @@ get_config_name() {    case "$1" in
     "universal1480") echo "e1480" ;;
     "universal1580") echo "e1580" ;;
     "universal2400") echo "e2400" ;;
+    "s5e9955") echo "e2500" ;;  # Exynos 2500
+    "s5e9965") echo "e2600" ;;  # Exynos 2600（型号待真机核对）
     "universal990") echo "e990" ;;
     "universal5420") echo "e5420" ;;
     "universal9825") echo "e9820" ;;
@@ -225,6 +244,10 @@ get_config_name() {    case "$1" in
     "mt6989") echo "mtd9300" ;;
     "mt6899") echo "mtd8400" ;;
     "mt6991") echo "mtd9400" ;;
+    "mt6993") echo "mtd9500s" ;;  # Dimensity 9500 / 9500s
+    "mt6994") echo "mtd9600m" ;;   # Dimensity 9600M
+    "mt6995") echo "mtd9600pro" ;; # Dimensity 9600 Pro（2+3+3）
+    "mt6880") echo "mtd7300" ;;    # Dimensity 7300
     "gs101") echo "gs101" ;;
     "gs201") echo "gs201" ;;
     "cheetah") echo "gs201" ;;
@@ -232,6 +255,8 @@ get_config_name() {    case "$1" in
     "zuma") echo "gs301" ;;
     "shiba") echo "gs301" ;;
     "comet") echo "gs401" ;;
+    "gs501") echo "gs501" ;;   # Tensor G5
+    "laguna") echo "gs501" ;;  # Tensor G5 平台代号
     "PRL") echo "kirin65x" ;;
     "BLN") echo "kirin65x" ;;
     "hi6250") echo "kirin65x" ;;
@@ -272,6 +297,8 @@ get_config_name() {    case "$1" in
     "kirin9000s") echo "kirin9000s" ;;
     "kirin9010") echo "kirin9010" ;;
     "kirin9020") echo "kirin9020" ;;
+    "kirin9030") echo "kirin9030" ;;
+    "kirin9050") echo "kirin9050" ;;
     "hi3650") echo "kirin955" ;;
     "FRD") echo "kirin955" ;;
     "EVA-TL00") echo "kirin955" ;;
@@ -292,6 +319,35 @@ get_config_name() {    case "$1" in
     "sp9863a_1h10") echo "sp9863" ;;
     *) echo "unsupported" ;;
     esac
+}
+
+# $1: ro.soc.model；按型号精确映射，绕开伪装机型或平台属性缺失
+get_config_name_by_model() {
+    _bm=$(printf '%s' "$1" | tr 'a-z' 'A-Z')
+    case "$_bm" in
+        SM8250-AC|SM8250AC) echo sdm870 ;;
+        SM8250) echo sdm865 ;;
+        SM7475*) echo sdm7g2p ;;
+        SM7550) echo sdm7g3 ;;
+        SM7675*) echo sdm7+g3 ;;
+        S5E9955) echo e2500 ;;
+        S5E9965) echo e2600 ;;
+        MT6993*) echo mtd9500s ;;
+        MT6994*) echo mtd9600m ;;
+        MT6995*) echo mtd9600pro ;;
+        MT6991*) echo mtd9400 ;;
+        MT6989*) echo mtd9300 ;;
+        MT6880*) echo mtd7300 ;;
+        GS501*|LAGUNA*) echo gs501 ;;
+        XRING*O3*) echo xring_o3 ;;
+        XRING*) echo xring_o1 ;;
+        *) echo unsupported ;;
+    esac
+}
+
+# 配置里 cpumask.all 的核数（超线程平台用它兜底比对）
+config_cpumask_nr() {
+    awk '/"all": \[/ { gsub(/[^0-9,]/,""); n = split($0, a, ","); print n; exit }' "$1" 2>/dev/null
 }
 
 #############################################################
@@ -367,8 +423,10 @@ topo_config_ok() {
     [ -f "$_oc" ] || return 1
     _on=$(topo_nr_core); _om=$(topo_max_freq)
     _cn=$(config_nr "$_oc")
+    _ca=$(config_cpumask_nr "$_oc")
     [ "$_cn" -gt 0 ] || return 1
-    [ "$_on" -eq "$_cn" ] || return 1
+    # 普通平台按 powerModel 核数；超线程平台（powerModel 按物理核）按 cpumask 逻辑核
+    [ "$_on" -eq "$_cn" ] || [ "$_on" -eq "$_ca" ] || return 1
     [ "$_om" -gt 0 ] || return 1
     _ol=$(topo_freq_list); _cl=$(config_freq_list "$_oc")
     _nsp=$(printf '%s' "$_ol" | wc -w | tr -d ' ')
@@ -397,4 +455,19 @@ topo_pick_config() {
         fi
     done
     [ -n "$_pbest" ] && basename "$_pbest" .json
+}
+
+###############################
+# SUSFS compatibility probe
+###############################
+# SUSFS / SUSFS Guard 是否已加载。只读探测，不写任何节点。
+# 用途：SUSFS 依赖 mount namespace 隐藏路径；本模块在 SUSFS 环境下必须避开
+# bind mount / umount / chmod 000 这类挂载与权限改写，否则会让 LKM 注入或隐藏失效。
+susfs_active() {
+    [ -e /proc/susfs_path ] && return 0
+    [ -d /sys/module/susfs_guard_lkm ] && return 0
+    [ -d /sys/module/susfs4ksu ] && return 0
+    [ -d /sys/module/ksu_susfs ] && return 0
+    [ -d /sys/module/susfs ] && return 0
+    return 1
 }

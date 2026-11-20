@@ -18,6 +18,8 @@ TOPO_ALL=${TOPO_ALL:-0-7}
 TOPO_BG=${TOPO_BG:-0-7}
 TOPO_REND=${TOPO_REND:-0-7}
 TOPO_MAIN=${TOPO_MAIN:-0-7}
+TOPO_MAIN2=${TOPO_MAIN2:-$TOPO_MAIN}
+TOPO_GAME=${TOPO_GAME:-$TOPO_ALL}
 TOPO_SPIRE=${TOPO_SPIRE:-0}
 
 thread_topo() {
@@ -127,7 +129,9 @@ thread_stop() {
     TPID_LIST=$(thread_pid)
     if [ -n "$TPID_LIST" ]; then kill $TPID_LIST 2>/dev/null; fi
     if [ -d "/dev/cpuset/$THREAD_CPU_SET" ]; then
+        set +f
         rmdir "/dev/cpuset/$THREAD_CPU_SET"/* 2>/dev/null
+        set -f
         rmdir "/dev/cpuset/$THREAD_CPU_SET" 2>/dev/null
     fi
     return 0

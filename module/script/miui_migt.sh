@@ -23,6 +23,15 @@ BASEDIR="$(dirname "$(readlink -f "$0")")"
 #miui
 hide_value() {
   if [[ -e "$1" ]]; then
+    if susfs_active; then
+      # SUSFS 通过 mount namespace 隐藏路径。这里若再做 umount / bind mount，
+      # 会污染挂载命名空间，导致 SUSFS LKM 注入失败或隐藏失效。
+      # SUSFS 环境下只写目标值，不做挂载覆盖与 chmod 000。
+      if [[ "$2" != "" ]]; then
+        lock_value "$2" "$1"
+      fi
+      return 0
+    fi
     umount "$1" 2>/dev/null
     c_path="/cache${1}"
     if [[ ! -f "$c_path" ]]; then
@@ -68,9 +77,11 @@ disable_migt(){
     hide_value $migt/force_reset_runtime '0'
 
     settings put secure speed_mode_enable 1
-    chmod 000 $migt/*
-    chmod 000 /sys/module/migt
-    chmod 000 /sys/module/sched_walt/holders/migt/parameters
+    if ! susfs_active; then
+      chmod 000 $migt/*
+      chmod 000 /sys/module/migt
+      chmod 000 /sys/module/sched_walt/holders/migt/parameters
+    fi
   fi
 
   glk=/proc/sys/glk
@@ -90,8 +101,10 @@ disable_migt(){
     hide_value $migt/boost_pid '0'
   fi
 
-  chmod 000 /sys/class/misc/migt
-  chmod 000 /sys/module/sched_walt/holders/migt
+  if ! susfs_active; then
+    chmod 000 /sys/class/misc/migt
+    chmod 000 /sys/module/sched_walt/holders/migt
+  fi
 }
 
 migt_away(){

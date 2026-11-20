@@ -107,6 +107,10 @@ write_pair() {
     WP_OLD_MIN=$(read_num "$WP_PATH/$MIN_NODE") || return 1
     WP_OLD_MAX=$(read_num "$WP_PATH/$MAX_NODE") || return 1
     le "$WP_OLD_MIN" "$WP_OLD_MAX" || return 1
+    # Uperf 写完后会把节点 chmod 0444 锁成只读；这里写前恢复所有者可写。
+    # 失败不阻断（真正只读的节点本来就应该写失败，交给调用方记录 errno）。
+    chmod u+w "$WP_PATH/$MAX_NODE" 2>/dev/null || :
+    chmod u+w "$WP_PATH/$MIN_NODE" 2>/dev/null || :
     if ! le "$WP_MIN" "$WP_OLD_MAX"; then
         printf '%s\n' "$WP_MAX" > "$WP_PATH/$MAX_NODE" || return 1
         printf '%s\n' "$WP_MIN" > "$WP_PATH/$MIN_NODE" || return 1
@@ -147,9 +151,9 @@ cleanup() {
     text_rollback
     if [ -n "$CT_TMP" ]; then rm -f "$CT_TMP" 2>/dev/null; fi
     if [ -n "$WORK" ] && [ -d "$WORK" ]; then
-        # WORK 是固定运行时目录下由本脚本生成的子目录
-        rm -f "$WORK"/* 2>/dev/null
-        rmdir "$WORK" 2>/dev/null
+        # WORK 是固定运行时目录下由本脚本生成的子目录。
+        # 全局 set -f 会让 "$WORK"/* 不展开，改用 rm -rf 直接删目录本身。
+        rm -rf "$WORK" 2>/dev/null
     fi
     if [ "$LOCKED" = 1 ]; then rm -rf "$LOCK" 2>/dev/null; fi
 }
@@ -177,11 +181,17 @@ init() {
             rm -rf "$LOCK" 2>/dev/null || fail 'cannot clear stale lock'
         fi
     fi
-    mkdir "$LOCK" 2>/dev/null || fail 'backend busy'
+    # WebUI 一次页面加载会连发多条命令，短暂重试后再判 busy，避免自撞锁。
+    mkdir "$LOCK" 2>/dev/null || { sleep 0.12; mkdir "$LOCK" 2>/dev/null; } || { sleep 0.2; mkdir "$LOCK" 2>/dev/null; } || fail 'backend busy: 另一个操作正在执行，请稍后重试'
     LOCKED=1
     printf '%s' "$$" > "$LOCK/pid" 2>/dev/null || :
     WORK="$RUNTIME/work.$$"
-    mkdir "$WORK" || fail 'cannot create private work directory'
+    rm -rf "$WORK" 2>/dev/null
+    if ! mkdir "$WORK" 2>"$RUNTIME/work.err"; then
+        WERR=$(head -n 1 "$RUNTIME/work.err" 2>/dev/null)
+        [ -n "$WERR" ] || WERR='未知原因'
+        fail "cannot create private work directory: $WERR"
+    fi
     BASELINE="$RUNTIME/baseline.$BOOT.tsv"
     [ ! -L "$THREAD_ROOT" ] || fail 'thread runtime must not be a symlink'
     [ -d "$THREAD_ROOT" ] || mkdir "$THREAD_ROOT" || fail 'cannot create thread runtime'
@@ -433,7 +443,9 @@ apply_crazy_boost() {
         BL_NOW=$(read_num "$BL_PATH/$MAX_NODE") || continue
         is_freq "$BL_NOW" || continue
         [ "$BL_NOW" = "$BL_TARGET" ] && continue
-        if printf '%s\n' "$BL_TARGET" > "$BL_PATH/$MAX_NODE" 2>"$WORK/boost.err"; then
+        # 2> 必须在 > node 之前，否则打开节点失败时 stderr 还没接上，boost.err 为空。
+        chmod u+w "$BL_PATH/$MAX_NODE" 2>/dev/null || :
+        if printf '%s\n' "$BL_TARGET" 2>"$WORK/boost.err" > "$BL_PATH/$MAX_NODE"; then
             BL_READ=$(read_num "$BL_PATH/$MAX_NODE") || BL_READ=
             if [ "$BL_READ" = "$BL_TARGET" ]; then
                 log_write info boost "$BL_ID: 上限 $BL_NOW → $BL_TARGET（表内最高档，不超出厂上限）"
@@ -474,12 +486,17 @@ cmd_mode() {
     else
         log_write warn thread '线程规则档位生成失败，沿用旧配置'
     fi
-    # crazy 档保核：进入时 min_cpus=max_cpus 防热插拔抖动；退出时恢复本机基线
+    # crazy 档保核：默认关闭。min_cpus=max_cpus 会让所有簇常开，是持续高功耗的主要来源；
+    # 需要满核常开的用户可创建 /data/adb/nanhe_ovo/corectl_pin_enabled 开关。
     if [ "$1" = crazy ]; then
-        if thread_corectl_pin "$BOOT"; then
-            log_write info thread '超频档：core_ctl 保核已开启（min_cpus=max_cpus，退出时恢复基线）'
+        if [ -f /data/adb/nanhe_ovo/corectl_pin_enabled ]; then
+            if thread_corectl_pin "$BOOT"; then
+                log_write info thread '超频档：core_ctl 保核已开启（min_cpus=max_cpus，退出时恢复基线）'
+            else
+                log_write warn thread 'core_ctl 保核失败或本机没有可写的热插拔节点'
+            fi
         else
-            log_write warn thread 'core_ctl 保核失败或本机没有可写的热插拔节点'
+            log_write info thread '超频档：core_ctl 保核默认关闭（避免簇常开抬高功耗；如需开启请创建 corectl_pin_enabled）'
         fi
     elif [ "$CM_PREV" = crazy ]; then
         thread_corectl_unpin "$BOOT" >/dev/null 2>&1 ||
@@ -911,15 +928,29 @@ valid_thread_preset() {
 threadrule_block() { # $1: package  $2: preset
     TRB_PKG=$1 TRB_P=$2
     thread_topo
+    # 三角洲行动（ACE 反作弊）：对线程名枚举、sched_setaffinity 和 cpuset 改写敏感，
+    # 只下发包级 cpuset（排除超大核）即可，不改线程亲和性；WebUI 可写
+    # /data/adb/nanhe_ovo/ace_compat_off 关闭此兼容，恢复完整 game 规则。
+    case "$TRB_PKG" in
+        com.tencent.tmgp.dfm|com.tencent.tmgp.dfm.ce)
+            if [ ! -f /data/adb/nanhe_ovo/ace_compat_off ]; then
+                printf '# nanhe_threadrule pkg=%s preset=%s compat=ace\n' "$TRB_PKG" "$TRB_P"
+                printf '%s=%s\n' "$TRB_PKG" "${TOPO_GAME:-$TOPO_ALL}"
+                return 0
+            fi
+            ;;
+    esac
     printf '# nanhe_threadrule pkg=%s preset=%s\n' "$TRB_PKG" "$TRB_P"
     case "$TRB_P" in
         ui)
             printf '%s=%s,%s {\n\tRenderThread=%s\n}\n' "$TRB_PKG" "$TOPO_REND" "$TOPO_MAIN" "$TOPO_REND"
             ;;
         game)
-            printf '%s=%s {\n' "$TRB_PKG" "$TOPO_ALL"
-            printf '\tUnityMain=%s\n' "$TOPO_MAIN"
-            printf '\tGameThread=%s\n' "$TOPO_MAIN"
+            # 包级 cpuset 排除最高频簇（超大核）：避免所有游戏线程都能被调度到超大核，
+            # 这是「模块工作功耗偏高」的主要来源；主线程另给双核（TOPO_MAIN2）。
+            printf '%s=%s {\n' "$TRB_PKG" "${TOPO_GAME:-$TOPO_ALL}"
+            printf '\tUnityMain=%s\n' "${TOPO_MAIN2:-$TOPO_MAIN}"
+            printf '\tGameThread=%s\n' "${TOPO_MAIN2:-$TOPO_MAIN}"
             printf '\tUnityGfxDeviceW=%s\n' "$TOPO_REND"
             printf '\tRenderThread*=%s\n' "$TOPO_REND"
             printf '\tRHIThread=%s\n' "$TOPO_REND"
@@ -959,9 +990,16 @@ cmd_threadrule() {
     [ ! -L "$THREAD_USER" ] || { err 'thread rules symlink refused'; return 1; }
     if [ -e "$THREAD_USER" ]; then
         [ -f "$THREAD_USER" ] && [ -r "$THREAD_USER" ] || { err 'cannot read thread rules'; return 1; }
-        # 移除该包已有的整块规则（块头带 nanhe_threadrule 标记，块体行跟随跳过）
+        # 移除该包已有的整块规则（块头带 nanhe_threadrule 标记，块体行跟随跳过）。
+        # 注意：非目标包的块头必须原样保留，否则第二次绑定其它游戏时找不到块头，
+        # 会把上一次的裸块当成普通行追加，表现为「绑定一个游戏后另一个绑不上/互相覆盖」。
         awk -v pkg="$1" '
-            /^# nanhe_threadrule pkg=/ { skip = (index($0, "pkg=" pkg " ") > 0); next }
+            BEGIN { skip = 0 }
+            /^# nanhe_threadrule pkg=/ {
+                if (index($0, "pkg=" pkg " ") > 0) { skip = 1; next }
+                skip = 0; print; next
+            }
+            skip && /^}$/ { skip = 0; next }
             { if (!skip) print }
         ' "$THREAD_USER" > "$WORK/text.new" || return 1
     else : > "$WORK/text.new" || return 1

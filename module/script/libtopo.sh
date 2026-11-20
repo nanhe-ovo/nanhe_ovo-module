@@ -76,6 +76,12 @@ topo_init() {
             for (i = 1; i <= n; i++) if (a[i] + 0 > m) m = a[i] + 0
             return m ""
         }
+        # 取簇内最后 k 颗（related_cpus 按编号升序），返回逗号串
+        function lastn(s, k,   n,a,i,out,cnt) {
+            n = split(s, a, " "); out = ""; cnt = 0
+            for (i = n; i >= 1 && cnt < k; i--) { out = a[i] (out == "" ? "" : " ") out; cnt++ }
+            return out
+        }
         {
             n++
             freq[n] = $1 + 0
@@ -85,6 +91,7 @@ topo_init() {
         END {
             if (n == 0) {
                 print "TOPO_BG=" all; print "TOPO_REND=" all; print "TOPO_MAIN=" all
+                print "TOPO_MAIN2=" all; print "TOPO_GAME=" all
                 exit
             }
             low = cpus[1]; high = cpus[n]
@@ -96,9 +103,17 @@ topo_init() {
                 for (i = 2; i < n; i++) mid = mid (mid == "" ? "" : " ") cpus[i]
                 rend = mid
             }
+            game = ""
+            for (i = 1; i < n; i++) game = game (game == "" ? "" : " ") cpus[i]
             print "TOPO_BG=" rng(firstn(low, 4))
             if (n == 1) { print "TOPO_REND=" all; print "TOPO_MAIN=" all }
             else { print "TOPO_REND=" rng(rend); print "TOPO_MAIN=" rng(lastone(high)) }
+            # 游戏主线程：最高簇最后两颗；最高簇只有一颗时补上一簇最后一颗（避免单核跑满）
+            if (n == 1) { print "TOPO_MAIN2=" all }
+            else if (nhigh >= 2) { print "TOPO_MAIN2=" rng(lastn(high, 2)) }
+            else { print "TOPO_MAIN2=" rng(lastn(high, 1) " " lastone(cpus[n - 1])) }
+            # 游戏包级 cpuset：排除最高频簇（超大核），其余核心给全部游戏线程
+            print "TOPO_GAME=" rng(game == "" ? all : game)
             print "TOPO_SPIRE=" ((n >= 2 && nhigh <= 2) ? 1 : 0)
         }' "$TOPO_FILE")"
     return 0

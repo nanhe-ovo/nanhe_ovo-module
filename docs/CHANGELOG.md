@@ -1,5 +1,17 @@
 # 更新日志
 
+## v1.9.3（2026-11-21）
+
+- 补全 2020+ 移动端 SoC 推测配置：新增 sdm870、sdm7g2、sdm7g3、Exynos 2500/2600、Tensor G5、麒麟 9030/9050、天玑 7300/7400、玄戒 O1/O3 共 12 份；全量 110 份配置做核数与 cpumask 一致性校验，修复 Exynos 2700 的簇序与 cpumask 缺失。
+- 刷入识别增加第三路：`ro.board.platform` / `ro.product.board` 都未匹配时，用 `ro.soc.model` 精确映射（SM8250-AC→870、MT6995→9600 Pro、MT6994→9600M、MT6993→9500、S5E9955→2500 等）；天玑 9500/9500s、9600M、9600 Pro 分别指向独立配置，不再共用同一份规则。
+- 首页状态卡移除 Root 方案展示，只显示「模块」工作状态（引擎运行中 / 线程运行中 / 未运行）；运行信息列表不再列出 Root 方案。
+- 修复绑定第二个游戏线程预设失败：删除块时不再丢弃其它游戏的块头注释，目标块以 `}` 结束而不是依赖下一个块头，避免裸块累积导致后续绑定互相覆盖。
+- 修复三角洲行动闪退：ACE 兼容模式下只下发包级 cpuset（排除最高频簇），不改线程亲和性；可通过 `/data/adb/nanhe_ovo/ace_compat_off` 关闭兼容、恢复完整规则。
+- 降低整机功耗：游戏包级 cpuset 与日常应用规则默认排除最高频簇；crazy 档 core_ctl 保核改为默认关闭，需要满核常开时创建 `corectl_pin_enabled` 开关。
+- 修复真机日志暴露的后端缺陷：cleanup 与 cpuset 清理不再受 `set -f` 影响；init 在加锁与建工作目录失败时输出真实 errno；锁冲突短暂重试；写 cpufreq 前恢复所有者可写，解决 Uperf 0444 锁导致的 Permission denied；boost 错误重定向顺序修正，stderr 能落盘。
+- SUSFS LKM 兼容：检测到 SUSFS 后跳过 miui_migt 的 bind mount / umount 与 chmod 000，避免污染挂载命名空间导致 SUSFS 注入或隐藏失效；模块自身仍不加载/卸载任何 .ko，也不写 kallsyms 与 /proc/susfs_*。
+- 测试与构建：新增配置生成器 `tools/gen_missing_configs.py`，打包前做全量 JSON 一致性检查。
+
 ## v1.9.2（2026-11-21）
 
 - 应用页改为「游戏」页：只列 `game.list` 内的游戏并显示中文名（内置 47 款，副标题保留包名），非游戏应用不再出现在列表中；搜索同时匹配游戏名与包名。

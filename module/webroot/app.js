@@ -132,7 +132,7 @@
 
   async function readBackend() {
     const root = await C.exec(window, 'id -u');
-    if (root.stdout.trim() !== '0') throw new Error('未获得 Root 权限（uid 不是 0）');
+    if (root.stdout.trim() !== '0') throw new Error('后端权限不足（uid 不是 0）');
     // status 是判定「设备是否可识别」的唯一硬条件；应用清单与规则只影响列表内容，
     // 它们失败时必须保留设备状态，而不是把整页退回演示模式。
     const status = await C.exec(window, C.command('status'));
@@ -168,7 +168,7 @@
     if (warnings.length) autoLog('read-warnings', 'warn', 'control', warnings.join(' / '));
     await loadLogs();
     if (warnings.length) notice('后端提示：\n' + warnings.join('\n'), false);
-    connection('Root 已连接 · 本地 callback 桥接');
+    connection('模块后端已连接 · 本地 callback 桥接');
     $('last-update').textContent = new Date().toLocaleTimeString('zh-CN', { hour12: false });
   }
 
@@ -355,9 +355,9 @@
       device_config: '平台配置', version: '模块版本', mode: '当前模式', modes: '可用模式',
       uperf: '调度引擎', tune: '系统调优', baseline: '频率基线', config: '配置文件',
       thread: '线程调度', thread_profile: '线程档位',
-      boot_id: '启动批次', service: '服务状态', backend: '后端', root: 'Root 方案',
+      boot_id: '启动批次', service: '服务状态', backend: '后端',
     };
-    const order = ['root', 'mode', 'version', 'uperf', 'thread', 'thread_profile', 'baseline', 'tune', 'device_config'];
+    const order = ['mode', 'version', 'uperf', 'thread', 'thread_profile', 'baseline', 'tune', 'device_config'];
     Object.entries(state.status.info)
       .filter(([key]) => order.indexOf(key) >= 0)
       .sort((a, b) => (order.indexOf(a[0]) + 1 || 99) - (order.indexOf(b[0]) + 1 || 99))
@@ -560,15 +560,20 @@
     if (!card) return;
     const info = state.status.info || {};
     const running = state.live && String(info.uperf || '').indexOf('运行') >= 0;
+    const threadRunning = state.live && String(info.thread || '').indexOf('运行') >= 0;
     const kind = state.demo ? 'demo' : running ? 'run' : 'idle';
     card.dataset.state = kind;
-    const rootMode = String(info.root || '');
-    const rootShort = rootMode.indexOf('LKM') >= 0 ? 'LKM' : rootMode.indexOf('GKI') >= 0 ? 'GKI'
-      : rootMode.indexOf('APatch') >= 0 ? 'APatch' : rootMode.indexOf('Magisk') >= 0 ? 'Magisk' : '';
-    $('status-tag').textContent = kind === 'demo' ? '演示' : kind === 'idle' ? '待机' : (rootShort || 'Root');
+    $('status-tag').textContent = kind === 'demo' ? '演示' : kind === 'idle' ? '待机' : '运行中';
     $('overview-heading').textContent = kind === 'run' ? '工作中' : kind === 'demo' ? '只读演示' : '待机';
     $('status-version').textContent = info.version || 'v-';
-    $('status-root').textContent = info.root || (state.live ? '未读到' : '未知');
+    // 只展示模块自身工作状态（调度引擎 / 线程引擎），不再展示 Root 实现方案。
+    const moduleState = !state.live ? '未知'
+      : running && threadRunning ? '引擎运行中 · 线程运行中'
+      : running ? '引擎运行中 · 线程未运行'
+      : threadRunning ? '线程运行中 · 引擎未运行'
+      : '未运行';
+    const moduleEl = $('status-module');
+    if (moduleEl) moduleEl.textContent = moduleState;
     $('stat-rules').textContent = String(Object.keys(state.rules || {}).length);
     $('stat-devices').textContent = String((state.status.devices || []).length);
   }

@@ -95,13 +95,18 @@ fix_perms
 
 PLATFORM="$(getprop ro.board.platform 2>/dev/null)"
 BOARD="$(getprop ro.product.board 2>/dev/null)"
+SOCMODEL="$(getprop ro.soc.model 2>/dev/null)"
 CFGNAME="$(get_config_name "$PLATFORM")"
 if [ "$CFGNAME" = unsupported ]; then
     CFGNAME="$(get_config_name "$BOARD")"
 fi
+if [ "$CFGNAME" = unsupported ] && [ -n "$SOCMODEL" ]; then
+    # 第三路：平台属性缺失或被伪装时，用 SoC 型号精确映射（SM8250-AC / MT6995 等）
+    CFGNAME="$(get_config_name_by_model "$SOCMODEL")"
+fi
 CFG_SRC=prop
 
-note "ro.board.platform=[${PLATFORM}] ro.product.board=[${BOARD}]"
+note "ro.board.platform=[${PLATFORM}] ro.product.board=[${BOARD}] ro.soc.model=[${SOCMODEL}]"
 
 # 拓扑校验：改机型 prop（伪装机型）后属性会指向别的平台配置，频率表与功耗模型
 # 都对不上，表现为「调度不生效 / 一直降频」。这里用真实核数与最高频复核，

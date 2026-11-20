@@ -1,6 +1,6 @@
 {
     "meta": {
-        "name": "Dimensity 7050 (mt6855) [推测,26.11.17]",
+        "name": "Dimensity 930 (mt6855) [核对,26.11.21]",
         "author": "南何ovo 推算（非官方调参表，需真机校准）"
     },
     "modules": {
@@ -38,22 +38,22 @@
             "enable": true,
             "powerModel": [
                 {
-                    "efficiency": 100,
                     "nr": 6,
-                    "typicalPower": 0.36,
                     "typicalFreq": 2.0,
+                    "typicalPower": 0.36,
                     "sweetFreq": 1.5,
                     "plainFreq": 1.1,
-                    "freeFreq": 0.6
+                    "freeFreq": 0.6,
+                    "efficiency": 100
                 },
                 {
-                    "efficiency": 280,
                     "nr": 2,
-                    "typicalPower": 1.1,
-                    "typicalFreq": 2.6,
-                    "sweetFreq": 1.95,
-                    "plainFreq": 1.43,
-                    "freeFreq": 0.78
+                    "typicalFreq": 2.2,
+                    "typicalPower": 1.0,
+                    "sweetFreq": 1.65,
+                    "plainFreq": 1.21,
+                    "freeFreq": 0.66,
+                    "efficiency": 280
                 }
             ]
         },
@@ -90,10 +90,6 @@
                     5
                 ],
                 "c1": [
-                    6,
-                    7
-                ],
-                "c2": [
                     6,
                     7
                 ]

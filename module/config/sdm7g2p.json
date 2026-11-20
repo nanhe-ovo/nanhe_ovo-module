@@ -1,6 +1,6 @@
 {
     "meta": {
-        "name": "Snapdragon 7+ Gen 2 (sm7475) [推测,26.11.17]",
+        "name": "Snapdragon 7+ Gen 2 (sm7475) [核对,26.11.21]",
         "author": "南何ovo 推算（非官方调参表，需真机校准）"
     },
     "modules": {
@@ -38,31 +38,31 @@
             "enable": true,
             "powerModel": [
                 {
-                    "efficiency": 130,
                     "nr": 4,
+                    "typicalFreq": 1.8,
                     "typicalPower": 0.45,
-                    "typicalFreq": 1.9,
-                    "sweetFreq": 1.42,
-                    "plainFreq": 1.04,
-                    "freeFreq": 0.57
+                    "sweetFreq": 1.35,
+                    "plainFreq": 0.99,
+                    "freeFreq": 0.54,
+                    "efficiency": 130
                 },
                 {
-                    "efficiency": 300,
                     "nr": 3,
-                    "typicalPower": 1.25,
                     "typicalFreq": 2.49,
+                    "typicalPower": 1.25,
                     "sweetFreq": 1.87,
                     "plainFreq": 1.37,
-                    "freeFreq": 0.75
+                    "freeFreq": 0.75,
+                    "efficiency": 300
                 },
                 {
-                    "efficiency": 400,
                     "nr": 1,
-                    "typicalPower": 1.7,
                     "typicalFreq": 2.91,
+                    "typicalPower": 1.7,
                     "sweetFreq": 2.18,
                     "plainFreq": 1.6,
-                    "freeFreq": 0.87
+                    "freeFreq": 0.87,
+                    "efficiency": 400
                 }
             ]
         },

@@ -1,6 +1,6 @@
 {
     "meta": {
-        "name": "Unisoc T310 (ums312) [推测,26.11.17]",
+        "name": "Unisoc T310 (ums312) [核对,26.11.21]",
         "author": "南何ovo 推算（非官方调参表，需真机校准）"
     },
     "modules": {
@@ -38,22 +38,22 @@
             "enable": true,
             "powerModel": [
                 {
-                    "efficiency": 100,
-                    "nr": 4,
-                    "typicalPower": 0.25,
-                    "typicalFreq": 1.6,
-                    "sweetFreq": 1.2,
-                    "plainFreq": 0.88,
-                    "freeFreq": 0.48
+                    "nr": 3,
+                    "typicalFreq": 1.8,
+                    "typicalPower": 0.3,
+                    "sweetFreq": 1.35,
+                    "plainFreq": 0.99,
+                    "freeFreq": 0.54,
+                    "efficiency": 100
                 },
                 {
-                    "efficiency": 160,
-                    "nr": 4,
-                    "typicalPower": 0.6,
+                    "nr": 1,
                     "typicalFreq": 2.0,
+                    "typicalPower": 0.75,
                     "sweetFreq": 1.5,
                     "plainFreq": 1.1,
-                    "freeFreq": 0.6
+                    "freeFreq": 0.6,
+                    "efficiency": 160
                 }
             ]
         },
@@ -74,29 +74,15 @@
                     0,
                     1,
                     2,
-                    3,
-                    4,
-                    5,
-                    6,
-                    7
+                    3
                 ],
                 "c0": [
                     0,
                     1,
-                    2,
-                    3
+                    2
                 ],
                 "c1": [
-                    4,
-                    5,
-                    6,
-                    7
-                ],
-                "c2": [
-                    4,
-                    5,
-                    6,
-                    7
+                    3
                 ]
             },
             "affinity": {

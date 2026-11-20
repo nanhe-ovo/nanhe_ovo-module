@@ -1,6 +1,6 @@
 {
     "meta": {
-        "name": "mtk 7200u",
+        "name": "mtk 7200u [核对,26.11.21]",
         "author": "yc@coolapk  ❤️吟惋兮❤"
     },
     "modules": {
@@ -38,22 +38,22 @@
             "enable": true,
             "powerModel": [
                 {
-                    "efficiency": 150,
                     "nr": 6,
+                    "typicalFreq": 2.0,
                     "typicalPower": 0.5,
-                    "typicalFreq": 2.5,
-                    "sweetFreq": 1.6,
-                    "plainFreq": 1.2,
-                    "freeFreq": 0.8
+                    "sweetFreq": 1.5,
+                    "plainFreq": 1.1,
+                    "freeFreq": 0.6,
+                    "efficiency": 150
                 },
                 {
-                    "efficiency": 350,
                     "nr": 2,
-                    "typicalPower": 1.5,
                     "typicalFreq": 2.8,
-                    "sweetFreq": 1.8,
-                    "plainFreq": 1.2,
-                    "freeFreq": 0.8
+                    "typicalPower": 1.5,
+                    "sweetFreq": 2.1,
+                    "plainFreq": 1.54,
+                    "freeFreq": 0.84,
+                    "efficiency": 350
                 }
             ]
         },
@@ -89,10 +89,6 @@
                     5
                 ],
                 "c1": [
-                    6,
-                    7
-                ],
-                "c2": [
                     6,
                     7
                 ]

@@ -1,6 +1,6 @@
 {
     "meta": {
-        "name": "Dimensity 1100 (mt6891) [推测,26.11.17]",
+        "name": "Dimensity 1100 (mt6891) [核对,26.11.21]",
         "author": "南何ovo 推算（非官方调参表，需真机校准）"
     },
     "modules": {
@@ -38,31 +38,22 @@
             "enable": true,
             "powerModel": [
                 {
-                    "efficiency": 100,
                     "nr": 4,
-                    "typicalPower": 0.36,
                     "typicalFreq": 2.0,
+                    "typicalPower": 0.36,
                     "sweetFreq": 1.5,
                     "plainFreq": 1.1,
-                    "freeFreq": 0.6
+                    "freeFreq": 0.6,
+                    "efficiency": 100
                 },
                 {
-                    "efficiency": 300,
-                    "nr": 3,
-                    "typicalPower": 1.2,
-                    "typicalFreq": 2.2,
-                    "sweetFreq": 1.65,
-                    "plainFreq": 1.21,
-                    "freeFreq": 0.66
-                },
-                {
-                    "efficiency": 340,
-                    "nr": 1,
-                    "typicalPower": 1.6,
+                    "nr": 4,
                     "typicalFreq": 2.6,
+                    "typicalPower": 1.4,
                     "sweetFreq": 1.95,
                     "plainFreq": 1.43,
-                    "freeFreq": 0.78
+                    "freeFreq": 0.78,
+                    "efficiency": 300
                 }
             ]
         },
@@ -99,9 +90,7 @@
                 "c1": [
                     4,
                     5,
-                    6
-                ],
-                "c2": [
+                    6,
                     7
                 ]
             },

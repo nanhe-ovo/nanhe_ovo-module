@@ -1,7 +1,7 @@
 id=nanhe_ovo
 name=南何ovo
-version=v1.9.4
-versionCode=202611214
+version=v1.9.5
+versionCode=202611215
 author=南何ovo
 description=基于 Uperf-Game-Turbo 的性能调度模块：五种全局性能模式、分应用调度、CPU/GPU 频率区间、刷新率管理与线程调度（引擎 AppOptR，SutoLiu，GPL-3.0，https://gitee.com/sutoliu/AppOptR）。线程档位跟随首页模式自动切换，并按本机 CPU 拓扑把线程绑到确定的核；应用页只列内置游戏名单并显示中文名。省电档收紧大核使用降低功耗，超频档保核并固定渲染线程、帧率更稳；安装时用真实核数、各簇频率与 SoC 型号复核平台配置，改机型伪装也不会选错配置。版本更新由 KernelSU / APatch 等管理器的模块仓库统一推送，面板内不联网检查更新。提供 Miuix 观感 WebUI、本机运行日志与机型信息。需要 Root 与支持 WebUI 的管理器，重启生效。
 updateJson=https://raw.githubusercontent.com/nanhe-ovo/nanhe_ovo-module/main/update.json

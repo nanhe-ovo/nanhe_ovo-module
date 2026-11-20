@@ -1,6 +1,6 @@
 {
     "meta": {
-        "name": "Exynos 2400 [推测,26.11.17]",
+        "name": "Exynos 2400 [核对,26.11.21]",
         "author": "南何ovo 推算（非官方调参表，需真机校准）"
     },
     "modules": {
@@ -38,31 +38,40 @@
             "enable": true,
             "powerModel": [
                 {
-                    "efficiency": 130,
                     "nr": 4,
-                    "typicalPower": 0.45,
                     "typicalFreq": 1.95,
+                    "typicalPower": 0.45,
                     "sweetFreq": 1.46,
                     "plainFreq": 1.07,
-                    "freeFreq": 0.58
+                    "freeFreq": 0.58,
+                    "efficiency": 130
                 },
                 {
-                    "efficiency": 300,
-                    "nr": 5,
-                    "typicalPower": 1.5,
+                    "nr": 3,
+                    "typicalFreq": 2.6,
+                    "typicalPower": 1.2,
+                    "sweetFreq": 1.95,
+                    "plainFreq": 1.43,
+                    "freeFreq": 0.78,
+                    "efficiency": 300
+                },
+                {
+                    "nr": 2,
                     "typicalFreq": 2.9,
+                    "typicalPower": 1.5,
                     "sweetFreq": 2.17,
                     "plainFreq": 1.59,
-                    "freeFreq": 0.87
+                    "freeFreq": 0.87,
+                    "efficiency": 480
                 },
                 {
-                    "efficiency": 480,
                     "nr": 1,
-                    "typicalPower": 2.0,
                     "typicalFreq": 3.2,
+                    "typicalPower": 2.0,
                     "sweetFreq": 2.4,
                     "plainFreq": 1.76,
-                    "freeFreq": 0.96
+                    "freeFreq": 0.96,
+                    "efficiency": 100
                 }
             ]
         },
@@ -100,11 +109,13 @@
                 "c1": [
                     4,
                     5,
-                    6,
+                    6
+                ],
+                "c2": [
                     7,
                     8
                 ],
-                "c2": [
+                "c3": [
                     9
                 ]
             },

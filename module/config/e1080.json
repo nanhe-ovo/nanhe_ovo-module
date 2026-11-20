@@ -1,6 +1,6 @@
 {
     "meta": {
-        "name": "Exynos 1080 [推测,26.11.17]",
+        "name": "Exynos 1080 [核对,26.11.21]",
         "author": "南何ovo 推算（非官方调参表，需真机校准）"
     },
     "modules": {
@@ -38,31 +38,31 @@
             "enable": true,
             "powerModel": [
                 {
-                    "efficiency": 100,
                     "nr": 4,
-                    "typicalPower": 0.36,
                     "typicalFreq": 2.0,
+                    "typicalPower": 0.36,
                     "sweetFreq": 1.5,
                     "plainFreq": 1.1,
-                    "freeFreq": 0.6
+                    "freeFreq": 0.6,
+                    "efficiency": 100
                 },
                 {
-                    "efficiency": 280,
                     "nr": 3,
-                    "typicalPower": 1.2,
-                    "typicalFreq": 2.5,
-                    "sweetFreq": 1.88,
-                    "plainFreq": 1.38,
-                    "freeFreq": 0.75
-                },
-                {
-                    "efficiency": 320,
-                    "nr": 1,
-                    "typicalPower": 1.5,
                     "typicalFreq": 2.6,
+                    "typicalPower": 1.2,
                     "sweetFreq": 1.95,
                     "plainFreq": 1.43,
-                    "freeFreq": 0.78
+                    "freeFreq": 0.78,
+                    "efficiency": 280
+                },
+                {
+                    "nr": 1,
+                    "typicalFreq": 2.8,
+                    "typicalPower": 1.6,
+                    "sweetFreq": 2.1,
+                    "plainFreq": 1.54,
+                    "freeFreq": 0.84,
+                    "efficiency": 320
                 }
             ]
         },

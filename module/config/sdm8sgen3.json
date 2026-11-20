@@ -1,6 +1,6 @@
 {
     "meta": {
-        "name": "Snapdragon 8s Gen 3 (sm8635) [推测,26.11.17]",
+        "name": "Snapdragon 8s Gen 3 (sm8635) [核对,26.11.21]",
         "author": "南何ovo 推算（非官方调参表，需真机校准）"
     },
     "modules": {
@@ -38,31 +38,31 @@
             "enable": true,
             "powerModel": [
                 {
-                    "efficiency": 130,
                     "nr": 3,
+                    "typicalFreq": 2.0,
                     "typicalPower": 0.45,
-                    "typicalFreq": 1.95,
-                    "sweetFreq": 1.46,
-                    "plainFreq": 1.07,
-                    "freeFreq": 0.58
+                    "sweetFreq": 1.5,
+                    "plainFreq": 1.1,
+                    "freeFreq": 0.6,
+                    "efficiency": 130
                 },
                 {
-                    "efficiency": 300,
                     "nr": 4,
-                    "typicalPower": 1.4,
                     "typicalFreq": 2.8,
+                    "typicalPower": 1.4,
                     "sweetFreq": 2.1,
                     "plainFreq": 1.54,
-                    "freeFreq": 0.84
+                    "freeFreq": 0.84,
+                    "efficiency": 300
                 },
                 {
-                    "efficiency": 480,
                     "nr": 1,
-                    "typicalPower": 1.9,
                     "typicalFreq": 3.0,
+                    "typicalPower": 1.9,
                     "sweetFreq": 2.25,
                     "plainFreq": 1.65,
-                    "freeFreq": 0.9
+                    "freeFreq": 0.9,
+                    "efficiency": 480
                 }
             ]
         },

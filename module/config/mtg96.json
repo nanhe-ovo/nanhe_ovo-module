@@ -1,6 +1,6 @@
 {
     "meta": {
-        "name": "Helio G96 (mt6827) [推测,26.11.17]",
+        "name": "Helio G96 (mt6827) [核对,26.11.21]",
         "author": "南何ovo 推算（非官方调参表，需真机校准）"
     },
     "modules": {
@@ -38,22 +38,22 @@
             "enable": true,
             "powerModel": [
                 {
-                    "efficiency": 100,
                     "nr": 6,
-                    "typicalPower": 0.3,
-                    "typicalFreq": 1.6,
-                    "sweetFreq": 1.2,
-                    "plainFreq": 0.88,
-                    "freeFreq": 0.48
+                    "typicalFreq": 2.0,
+                    "typicalPower": 0.45,
+                    "sweetFreq": 1.5,
+                    "plainFreq": 1.1,
+                    "freeFreq": 0.6,
+                    "efficiency": 100
                 },
                 {
-                    "efficiency": 230,
                     "nr": 2,
-                    "typicalPower": 0.9,
                     "typicalFreq": 2.05,
+                    "typicalPower": 1.0,
                     "sweetFreq": 1.54,
                     "plainFreq": 1.13,
-                    "freeFreq": 0.61
+                    "freeFreq": 0.61,
+                    "efficiency": 230
                 }
             ]
         },
@@ -90,10 +90,6 @@
                     5
                 ],
                 "c1": [
-                    6,
-                    7
-                ],
-                "c2": [
                     6,
                     7
                 ]

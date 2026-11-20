@@ -1,6 +1,6 @@
 {
     "meta": {
-        "name": "Spreadtrum SC9832E (sp9832e) [推测,26.11.17]",
+        "name": "Spreadtrum SC9832E (sp9832e) [核对,26.11.21]",
         "author": "南何ovo 推算（非官方调参表，需真机校准）"
     },
     "modules": {
@@ -38,13 +38,13 @@
             "enable": true,
             "powerModel": [
                 {
-                    "efficiency": 100,
-                    "nr": 8,
-                    "typicalPower": 0.4,
-                    "typicalFreq": 1.6,
-                    "sweetFreq": 1.2,
-                    "plainFreq": 0.88,
-                    "freeFreq": 0.48
+                    "nr": 4,
+                    "typicalFreq": 1.4,
+                    "typicalPower": 0.35,
+                    "sweetFreq": 1.05,
+                    "plainFreq": 0.77,
+                    "freeFreq": 0.42,
+                    "efficiency": 100
                 }
             ]
         },
@@ -65,41 +65,13 @@
                     0,
                     1,
                     2,
-                    3,
-                    4,
-                    5,
-                    6,
-                    7
+                    3
                 ],
                 "c0": [
                     0,
                     1,
                     2,
-                    3,
-                    4,
-                    5,
-                    6,
-                    7
-                ],
-                "c1": [
-                    0,
-                    1,
-                    2,
-                    3,
-                    4,
-                    5,
-                    6,
-                    7
-                ],
-                "c2": [
-                    0,
-                    1,
-                    2,
-                    3,
-                    4,
-                    5,
-                    6,
-                    7
+                    3
                 ]
             },
             "affinity": {

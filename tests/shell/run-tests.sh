@@ -782,14 +782,14 @@ has "9600 Pro 含 4.55GHz 模型点" "$(cat "$CONFIG_DIR/mtd9600pro.json")" "4.5
 [ -f "$CONFIG_DIR/mtd9600m.json" ] && ok "mtd9600m 配置存在" || bad "缺少 mtd9600m.json"
 [ -f "$CONFIG_DIR/mtd9500s.json" ] && ok "mtd9500s 配置存在" || bad "缺少 mtd9500s.json"
 [ -f "$CONFIG_DIR/mtd8500.json" ] && ok "mtd8500 配置存在" || bad "缺少 mtd8500.json"
-has "8500 为 8 核单簇" "$(cat "$CONFIG_DIR/mtd8500.json")" '"nr": 8'
+has "8500 为 1+3+4 三簇" "$(cat "$CONFIG_DIR/mtd8500.json")" '"nr": 1'
 [ -f "$CONFIG_DIR/sdm8e6.json" ] && ok "sdm8e6 配置存在" || bad "缺少 sdm8e6.json"
 has "8E6 含 5.0GHz 模型点" "$(cat "$CONFIG_DIR/sdm8e6.json")" "5.0"
 [ -f "$CONFIG_DIR/sdm8e6x.json" ] && ok "sdm8e6x 配置存在" || bad "缺少 sdm8e6x.json"
 has "8E6x 含 5.01GHz 模型点" "$(cat "$CONFIG_DIR/sdm8e6x.json")" "5.01"
 [ -f "$CONFIG_DIR/exynos2700.json" ] && ok "exynos2700 配置存在" || bad "缺少 exynos2700.json"
 [ -f "$CONFIG_DIR/e2400.json" ] && ok "e2400 配置存在" || bad "缺少 e2400.json"
-has "2400 大核簇 5 核" "$(cat "$CONFIG_DIR/e2400.json")" '"nr": 5'
+has "2400 为四簇结构（含 2 核 2.9GHz 组）" "$(cat "$CONFIG_DIR/e2400.json")" '"nr": 2'
 [ -f "$CONFIG_DIR/sdm8elite.json" ] && ok "sdm8elite 配置存在" || bad "缺少 sdm8elite.json"
 has "8 Elite 含 4.32GHz 模型点" "$(cat "$CONFIG_DIR/sdm8elite.json")" "4.32"
 [ -f "$CONFIG_DIR/mtd9300.json" ] && ok "mtd9300 配置存在" || bad "缺少 mtd9300.json"
@@ -799,7 +799,7 @@ has "9020 含 2.5GHz 模型点" "$(cat "$CONFIG_DIR/kirin9020.json")" "2.5"
 [ -f "$CONFIG_DIR/gs401.json" ] && ok "gs401 配置存在" || bad "缺少 gs401.json"
 has "Tensor G4 含 3.1GHz 模型点" "$(cat "$CONFIG_DIR/gs401.json")" "3.1"
 [ -f "$CONFIG_DIR/sp9832.json" ] && ok "sp9832 配置存在" || bad "缺少 sp9832.json"
-has "9832 为 8 核单簇" "$(cat "$CONFIG_DIR/sp9832.json")" '"nr": 8'
+has "9832 为四核单簇" "$(cat "$CONFIG_DIR/sp9832.json")" '"nr": 4'
 [ -f "$CONFIG_DIR/mtd8400.json" ] && ok "mtd8400 配置存在" || bad "缺少 mtd8400.json"
 CRAZY_MISS=0
 for cf in "$CONFIG_DIR"/*.json; do

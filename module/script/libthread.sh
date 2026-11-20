@@ -11,6 +11,55 @@ THREAD_DISABLED=/data/adb/nanhe_ovo/thread_disabled
 APPOpt_BIN=/data/adb/modules/nanhe_ovo/bin/appopt/AppOpt
 THREAD_CPU_SET=nanhe_opt
 
+# 拓扑展开：语义核（e/p/hp/all）必须落成确定的数字掩码再交给引擎。
+# 引擎在 2 簇与单簇平台上会把 p-core / hp-core 解析成空集，空集会连带清空
+# 基础 cpuset 的 cpus，游戏线程被塞进无 CPU 的 cgroup，表现为启动卡死/闪退。
+TOPO_ALL=${TOPO_ALL:-0-7}
+TOPO_BG=${TOPO_BG:-0-7}
+TOPO_REND=${TOPO_REND:-0-7}
+TOPO_MAIN=${TOPO_MAIN:-0-7}
+TOPO_SPIRE=${TOPO_SPIRE:-0}
+
+thread_topo() {
+    for _lt in "${MODDIR:-/data/adb/modules/nanhe_ovo}/script/libtopo.sh" \
+               /data/adb/modules/nanhe_ovo/script/libtopo.sh; do
+        [ -f "$_lt" ] && . "$_lt" && { topo_init; return 0; }
+    done
+    return 1
+}
+
+# 读 stdin，把规则行右侧的语义核展开为数字掩码；空结果回退全核。
+thread_expand_stream() {
+    awk -v E="$TOPO_BG" -v P="$TOPO_REND" -v H="$TOPO_MAIN" -v A="$TOPO_ALL" '
+    function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
+    {
+        line = $0
+        if (line ~ /^[ \t]*#/ ) { print line; next }
+        if (line ~ /^[ \t]*$/) { print line; next }
+        eq = index(line, "=")
+        if (eq == 0) { print line; next }
+        left = substr(line, 1, eq)
+        rest = substr(line, eq + 1)
+        tail = ""
+        if (match(rest, /[ \t]*\{/)) { tail = substr(rest, RSTART); rest = substr(rest, 1, RSTART - 1) }
+        rest = trim(rest)
+        if (rest == "") { print line; next }
+        n = split(rest, parts, ",")
+        out = ""; bad = 0
+        for (i = 1; i <= n; i++) {
+            p = trim(parts[i])
+            if (p == "e-core") p = E
+            else if (p == "p-core") p = P
+            else if (p == "hp-core") p = H
+            else if (p == "all-core") p = A
+            if (p == "") { bad = 1; break }
+            out = out (i > 1 ? "," : "") p
+        }
+        if (bad || out == "") { print left A tail; next }
+        print left out tail
+    }'
+}
+
 # 当前生效的档位名（由上次 thread_gen_conf 写入）
 thread_profile() {
     TP=$(cat "$THREAD_PROFILE" 2>/dev/null)
@@ -46,13 +95,14 @@ thread_gen_conf() { # $1: mode
     TG_SRC=/data/adb/modules/nanhe_ovo/appopt/appopt_${TG_MODE}.conf
     [ -f "$TG_SRC" ] || TG_SRC=/data/adb/modules/nanhe_ovo/appopt/appopt_balance.conf
     [ -f "$TG_SRC" ] || return 1
+    thread_topo
     mkdir -p "$THREAD_ROOT" 2>/dev/null || return 1
     [ ! -L "$THREAD_ROOT" ] && [ ! -L "$THREAD_ACTIVE" ] && [ ! -L "$THREAD_USER" ] || return 1
     chmod 0700 "$THREAD_ROOT" 2>/dev/null
     : > "$THREAD_ROOT/.active.tmp" 2>/dev/null || return 1
-    cat "$TG_SRC" > "$THREAD_ROOT/.active.tmp" || { rm -f "$THREAD_ROOT/.active.tmp"; return 1; }
+    thread_expand_stream < "$TG_SRC" > "$THREAD_ROOT/.active.tmp" || { rm -f "$THREAD_ROOT/.active.tmp"; return 1; }
     if [ -f "$THREAD_USER" ]; then
-        cat "$THREAD_USER" >> "$THREAD_ROOT/.active.tmp" || { rm -f "$THREAD_ROOT/.active.tmp"; return 1; }
+        thread_expand_stream < "$THREAD_USER" >> "$THREAD_ROOT/.active.tmp" || { rm -f "$THREAD_ROOT/.active.tmp"; return 1; }
     fi
     cat "$THREAD_ROOT/.active.tmp" > "$THREAD_ACTIVE" || { rm -f "$THREAD_ROOT/.active.tmp"; return 1; }
     rm -f "$THREAD_ROOT/.active.tmp"

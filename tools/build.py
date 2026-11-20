@@ -9,9 +9,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 MODULE = ROOT / "module"
 DIST = ROOT / "dist"
-STAMP = (2026, 11, 20, 0, 0, 0)
-VERSION = "v1.9.0"
-BUILD = "20261120"
+STAMP = (2026, 11, 21, 0, 0, 0)
+VERSION = "v1.9.1"
+BUILD = "20261121"
 ZIP_NAME = f"nanhe_ovo-{VERSION}-{BUILD}.zip"
 SRC_NAME = f"nanhe_ovo-src-{VERSION}.zip"
 
@@ -78,6 +78,36 @@ def write_zip(target: Path, entries):
     return target
 
 
+def check_profiles():
+    """配置门禁：fast 档不能弱于 performance 档，语义核规则不能以空掩码收尾。"""
+    import json
+    problems = []
+    for p in sorted((MODULE / "config").glob("*.json")):
+        data = json.loads(p.read_text(encoding="utf-8"))
+        presets = data.get("presets") or {}
+        fast = (presets.get("fast") or {}).get("*") or {}
+        perf = (presets.get("performance") or {}).get("*") or {}
+        if "cpu.fastLimitPower" not in fast or "cpu.fastLimitPower" not in perf:
+            continue
+        f = float(fast["cpu.fastLimitPower"])
+        q = float(perf["cpu.fastLimitPower"])
+        cap = float(fast.get("cpu.fastLimitCapacity") or 0)
+        # 999 表示不限制，等价于足够大
+        if f < q and f != 999:
+            problems.append(f"{p.name}: fast 功率墙 {f} 低于 performance {q}")
+        if cap == 0 and f != 999:
+            problems.append(f"{p.name}: fast 算力容量为 0（会压制核心上线）")
+    for p in sorted((MODULE / "appopt").glob("appopt_*.conf")):
+        for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+            text = line.strip()
+            if not text or text.startswith("#") or "=" not in text:
+                continue
+            body = text.split("=", 1)[1].split("{")[0].strip()
+            if body == "":
+                problems.append(f"{p.name}:{i} 规则 spec 为空")
+    return problems
+
+
 def verify(zip_path: Path):
     problems = []
     with zipfile.ZipFile(zip_path) as zf:
@@ -119,6 +149,7 @@ def main():
             raise SystemExit(f"[FAIL] {rel} 必须是 UTF-8 无 BOM 且 LF 换行")
         if not data.startswith(b"#!/usr/bin/env bash"):
             raise SystemExit(f"[FAIL] {rel} 缺少 shebang")
+    problems += check_profiles()
     sizes = sum(p.stat().st_size for _, p, _ in entries)
     print(f"模块文件 {len(entries)} 个，未压缩 {sizes // 1024} KB")
 

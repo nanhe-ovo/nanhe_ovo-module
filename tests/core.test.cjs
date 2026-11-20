@@ -124,10 +124,26 @@ assert.deepStrictEqual(plain(C.parseThreadRules(
 )), { 'com.example.game': 'game', 'com.example.reader': 'ui' });
 assert.deepStrictEqual(plain(C.parseThreadRules('')), {});
 assert.deepStrictEqual(C.parseApps('com.b.app\ncom.a.app\ncom.a.app\njunk\n'), [
-  { pkg: 'com.a.app', game: false }, { pkg: 'com.b.app', game: false },
+  { pkg: 'com.a.app', name: 'com.a.app', game: false },
+  { pkg: 'com.b.app', name: 'com.b.app', game: false },
 ]);
 assert.deepStrictEqual(C.parseApps('com.a.app\tgame\ncom.b.app'), [
-  { pkg: 'com.a.app', game: true }, { pkg: 'com.b.app', game: false },
+  { pkg: 'com.a.app', name: 'com.a.app', game: true },
+  { pkg: 'com.b.app', name: 'com.b.app', game: false },
+]);
+// 三列：包名 / 中文名 / game 标记；名称含空格时只按制表符分列
+assert.deepStrictEqual(C.parseApps(
+  'com.tencent.tmgp.sgame\t王者荣耀\tgame\n' +
+  'com.miHoYo.bh3\t崩坏 3\tgame\n' +
+  'com.example.reader\t示例阅读\tapp\n'
+), [
+  { pkg: 'com.miHoYo.bh3', name: '崩坏 3', game: true },
+  { pkg: 'com.tencent.tmgp.sgame', name: '王者荣耀', game: true },
+  { pkg: 'com.example.reader', name: '示例阅读', game: false },
+]);
+// 缺名称列时回退包名
+assert.deepStrictEqual(C.parseApps('com.a.app\t\tgame'), [
+  { pkg: 'com.a.app', name: 'com.a.app', game: true },
 ]);
 
 // 频率换算与区间校验

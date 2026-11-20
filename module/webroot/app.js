@@ -103,7 +103,7 @@
   function demo() {
     state.live = false; state.demo = true;
     state.status = C.parseStatus(DEMO);
-    state.apps = C.parseApps('com.android.settings\ncom.example.reader\ncom.example.game\tgame');
+    state.apps = C.parseApps('com.tencent.tmgp.sgame\t王者荣耀\tgame\ncom.miHoYo.Yuanshen\t原神\tgame\ncom.example.reader\t示例阅读\tapp');
     state.rules = C.parseRules(DEMO_RULES);
     state.threadrules = C.parseThreadRules(DEMO_THREAD);
     state.deviceInfo = [];
@@ -164,8 +164,7 @@
     state.live = true; state.demo = false;
     const rInfo = refreshInfo();
     if (!rInfo.known) autoLog('refresh-table', 'warn', 'refresh', '页面发现本机没有上报刷新率档位表，已放开全部档位（后端 status 的 refresh_known=0）');
-    if (!state.apps.length) autoLog('apps-empty', 'warn', 'apps', '页面读到的应用列表为空（后端枚举失败或没有已安装应用）');
-    if (!state.deviceInfo.length) autoLog('deviceinfo-empty', 'warn', 'deviceinfo', '页面没有读到机型与系统信息，关于页只显示版本');
+    if (!state.apps.length) autoLog('apps-empty', 'warn', 'apps', '页面读到的应用列表为空（后端枚举失败或没有已安装应用）');    if (!state.deviceInfo.length) autoLog('deviceinfo-empty', 'warn', 'deviceinfo', '页面没有读到机型与系统信息，关于页只显示版本');
     if (warnings.length) autoLog('read-warnings', 'warn', 'control', warnings.join(' / '));
     await loadLogs();
     if (warnings.length) notice('后端提示：\n' + warnings.join('\n'), false);
@@ -433,18 +432,20 @@
     if (!state.status.devices.length) holder.append(el('p', 'empty', '没有可管理的频率节点。'));
   }
 
-  function ruleRow(pkg, game) {
+  function ruleRow(pkg, game, name) {
     const special = pkg === '*' || pkg === '-';
     const row = el('div', 'rule-row');
     const heading = el('div', 'rule-title');
     const text = el('div');
-    const strong = el('strong', '', pkg === '*' ? '默认规则 *' : pkg === '-' ? '熄屏规则 -' : pkg);
+    const label = special ? (pkg === '*' ? '默认规则 *' : '熄屏规则 -') : (name || pkg);
+    const strong = el('strong', '', label);
     text.append(strong);
+    if (!special && name && name !== pkg) text.append(el('small', 'rule-pkg', pkg));
     if (game) text.append(el('small', 'rule-tag', '游戏'));
     text.append(
       el('small', '', '当前：' + (state.rules[pkg] ? modeName(state.rules[pkg]) : '未设置（跟随默认）'))
     );
-    heading.append(el('span', 'app-avatar', special ? pkg : pkg.split('.').pop().slice(0, 1).toUpperCase()), text);
+    heading.append(el('span', 'app-avatar', special ? pkg : String(label).slice(0, 1).toUpperCase()), text);
     row.append(heading);
     const controls = el('div', 'rule-controls');
     const select = el('select');
@@ -504,17 +505,21 @@
     const special = $('special-rules');
     special.replaceChildren(ruleRow('*'), ruleRow('-'));
     const query = $('app-search').value.trim().toLowerCase();
-    const appMap = new Map(state.apps.map(a => [a.pkg, !!a.game]));
-    Object.keys(state.rules).filter(p => p !== '*' && p !== '-').forEach(p => { if (!appMap.has(p)) appMap.set(p, false); });
-    const entries = [...appMap.entries()].map(([pkg, game]) => ({ pkg, game }))
-      .filter(e => e.pkg.toLowerCase().includes(query))
-      .sort((a, b) => (a.game === b.game ? a.pkg.localeCompare(b.pkg) : a.game ? -1 : 1));
-    $('app-count').textContent = entries.length + ' 个包' + (state.demo ? ' · 演示' : state.live ? '' : ' · 上次读取');
+    // 应用页只保留游戏：后端 game.list 命中才会带 game 标记，其余应用不进列表。
+    const games = new Map();
+    state.apps.filter(a => a.game).forEach(a => games.set(a.pkg, a.name || a.pkg));
+    const entries = [...games.entries()].map(([pkg, name]) => ({ pkg, name }))
+      .filter(e => !query || e.pkg.toLowerCase().includes(query) || e.name.toLowerCase().includes(query))
+      .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+    const hidden = Object.keys(state.rules).filter(p => p !== '*' && p !== '-' && !games.has(p)).length;
+    $('app-count').textContent = entries.length + ' 款游戏'
+      + (hidden ? ' · 另有 ' + hidden + ' 条非游戏规则' : '')
+      + (state.demo ? ' · 演示' : state.live ? '' : ' · 上次读取');
     const list = $('app-list');
     list.replaceChildren();
-    entries.slice(0, state.limit).forEach(e => list.append(ruleRow(e.pkg, e.game)));
-    if (!entries.length) list.append(el('p', 'empty', query ? '未找到匹配的包名' :
-      (state.live ? '本机未能枚举到应用包名。设备状态仍可正常读写，可在终端执行 pm list packages 排查枚举失败的原因。' : '未读取到已安装应用或应用规则')));
+    entries.slice(0, state.limit).forEach(e => list.append(ruleRow(e.pkg, true, e.name)));
+    if (!entries.length) list.append(el('p', 'empty', query ? '未找到匹配的游戏' :
+      (state.live ? '本机未检测到已安装的游戏。应用页只列 game.list 内的游戏，可在终端执行 pm list packages 排查枚举失败的原因。' : '未读取到游戏列表')));
     if (entries.length > state.limit) {
       const more = el('button', 'text-button', '再显示 60 个（剩余 ' + (entries.length - state.limit) + '）');
       more.type = 'button';

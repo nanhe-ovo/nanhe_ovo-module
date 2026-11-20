@@ -99,9 +99,36 @@ CFGNAME="$(get_config_name "$PLATFORM")"
 if [ "$CFGNAME" = unsupported ]; then
     CFGNAME="$(get_config_name "$BOARD")"
 fi
+CFG_SRC=prop
 
 note "ro.board.platform=[${PLATFORM}] ro.product.board=[${BOARD}]"
-note "匹配配置名=[${CFGNAME}]"
+
+# 拓扑校验：改机型 prop（伪装机型）后属性会指向别的平台配置，频率表与功耗模型
+# 都对不上，表现为「调度不生效 / 一直降频」。这里用真实核数与最高频复核，
+# 不符时按拓扑指纹在本机所有配置里挑最接近的一份，而不是直接退 template。
+if [ "$CFGNAME" = unsupported ]; then
+    TCFG="$(topo_pick_config "$MODPATH/config")"
+    if [ -n "$TCFG" ]; then
+        note "属性未匹配（platform=${PLATFORM} board=${BOARD}），按拓扑指纹选用 ${TCFG}"
+        CFGNAME="$TCFG"
+        CFG_SRC=topo
+    fi
+elif [ -f "$MODPATH/config/${CFGNAME}.json" ]; then
+    if ! topo_config_ok "$CFGNAME" "$MODPATH/config"; then
+        TCFG="$(topo_pick_config "$MODPATH/config")"
+        if [ -n "$TCFG" ] && [ "$TCFG" != "$CFGNAME" ]; then
+            note "属性配置 ${CFGNAME}.json 与本机拓扑不符（核数 $(topo_nr_core)，最高频 $(topo_max_freq)kHz），按拓扑指纹改用 ${TCFG}"
+            CFGNAME="$TCFG"
+            CFG_SRC=topo
+        else
+            note "属性配置 ${CFGNAME}.json 与本机拓扑不符，且没有同核数候选，仍沿用属性结果"
+        fi
+    fi
+else
+    note "属性映射到 ${CFGNAME}，但模块内没有该配置，按原逻辑回落到模板"
+fi
+
+note "匹配配置名=[${CFGNAME}]（来源：${CFG_SRC}）"
 
 if [ "$CFGNAME" != unsupported ] && [ -f "$MODPATH/config/${CFGNAME}.json" ]; then
     SRC="$MODPATH/config/${CFGNAME}.json"
@@ -158,7 +185,8 @@ note "配置已写入 ${USER_PATH}"
 mkdir -p /data/adb/nanhe_ovo || abort "! 无法创建 /data/adb/nanhe_ovo"
 chmod 0700 /data/adb/nanhe_ovo 2>/dev/null
 printf '%s\n' "$CFGNAME" >/data/adb/nanhe_ovo/device_config.txt
-chmod 0600 /data/adb/nanhe_ovo/device_config.txt 2>/dev/null
+printf '%s\n' "$CFG_SRC" >/data/adb/nanhe_ovo/config_source.txt
+chmod 0600 /data/adb/nanhe_ovo/device_config.txt /data/adb/nanhe_ovo/config_source.txt 2>/dev/null
 # 回退模板时把原因写进运行日志：模板没有 CPU 功耗模型，uperf 不接管频率，
 # 系统 DVFS 会按自己的策略频繁升降频（真机上表现为「模块在降频」）。
 if [ "$CFGNAME" = template ]; then

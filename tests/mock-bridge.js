@@ -28,7 +28,14 @@
   const STATUS_UNKNOWN = STATUS
     .replace('info\trefresh_supported\t60 120 144', 'info\trefresh_supported\t30 48 60 72 90 120 144 165 180 240')
     .replace('info\trefresh_known\t1', 'info\trefresh_known\t0');
-  const APPS = ['com.android.settings', 'com.tencent.mm', 'com.example.reader', 'com.example.game', 'com.miHoYo.Yuanshen\tgame', 'org.telegram.messenger'].join('\n');
+  const APPS = [
+    'com.tencent.tmgp.sgame\t王者荣耀\tgame',
+    'com.miHoYo.Yuanshen\t原神\tgame',
+    'com.example.game\t示例游戏\tgame',
+    'com.android.settings\t设置\tapp',
+    'com.example.reader\t示例阅读\tapp',
+    'org.telegram.messenger\tTelegram\tapp',
+  ].join('\n');
   const RULES = '# 分应用性能模式配置\n# \'-\' means offscreen rule\n# \'*\' means default rule\n\ncom.miHoYo.Yuanshen performance\ncom.example.game fast\n- powersave\n* balance\n';
   const DEVINFO = [
     ['device', '品牌', 'REDMI'],

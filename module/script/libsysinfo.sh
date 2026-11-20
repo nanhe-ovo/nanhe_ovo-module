@@ -133,8 +133,7 @@ _get_kalama_type() {
 }
 
 # $1:board_name
-get_config_name() {
-    case "$1" in
+get_config_name() {    case "$1" in
     "pineapple") echo "$(_get_pinekala_type)" ;;
     "kalama") echo "$(_get_kalama_type)" ;;
     "taro") echo "$(_get_taro_type)" ;;
@@ -293,4 +292,109 @@ get_config_name() {
     "sp9863a_1h10") echo "sp9863" ;;
     *) echo "unsupported" ;;
     esac
+}
+
+#############################################################
+# 拓扑指纹（用于伪装机型场景）
+#############################################################
+
+# 实际核数：按 /sys/devices/system/cpu/present 统计
+topo_nr_core() {
+    _tn=$(cat /sys/devices/system/cpu/present 2>/dev/null)
+    printf '%s\n' "$_tn" | awk -F, '{n=0; for(i=1;i<=NF;i++){if($i ~ /-/){split($i,a,"-"); n+=a[2]-a[1]+1} else n++}} END{print n+0}'
+}
+
+# 所有 policy 的最高频（kHz）
+topo_max_freq() {
+    _tm=
+    for _td in /sys/devices/system/cpu/cpufreq/policy*; do
+        [ -d "$_td" ] || continue
+        _tf=$(cat "$_td/cpuinfo_max_freq" 2>/dev/null)
+        case "$_tf" in ''|*[!0-9]*) continue;; esac
+        if [ -z "$_tm" ] || [ "$_tf" -gt "$_tm" ]; then _tm=$_tf; fi
+    done
+    printf '%s' "${_tm:-0}"
+}
+
+# 配置文件的核数（powerModel 的 nr 之和）
+config_nr() {
+    awk -F': *' '/"nr"/ {gsub(/[^0-9].*/,"",$2); s+=$2} END{print s+0}' "$1" 2>/dev/null
+}
+
+# 配置文件的最高 typicalFreq（GHz → kHz）
+config_top_freq() {
+    awk -F': *' '/"typicalFreq"/ {
+        gsub(/[^0-9.].*/,"",$2); if($2+0>m)m=$2+0
+    } END{printf "%d", m*1000000}' "$1" 2>/dev/null
+}
+
+# 实测各簇最高频（kHz，升序，空格分隔）；control.sh 有 set -f，不能用 glob
+topo_freq_list() {
+    _ti=0
+    while [ "$_ti" -lt 32 ]; do
+        _td="/sys/devices/system/cpu/cpufreq/policy$_ti"
+        _ti=$((_ti + 1))
+        [ -d "$_td" ] || continue
+        _tf=$(cat "$_td/cpuinfo_max_freq" 2>/dev/null)
+        case "$_tf" in ''|*[!0-9]*) continue;; esac
+        printf '%s\n' "$_tf"
+    done | sort -n | tr '\n' ' '
+}
+
+# 配置文件的各簇典型频率（kHz，升序，空格分隔）
+config_freq_list() {
+    awk -F': *' '/"typicalFreq"/ {
+        gsub(/[^0-9.].*/,"",$2); if ($2 + 0 > 0) printf "%d\n", $2 * 1000000
+    }' "$1" 2>/dev/null | sort -n | tr '\n' ' '
+}
+
+# 两组频率向量的距离（kHz 差绝对值之和，簇数不同加惩罚）
+freq_dist() {
+    awk -v a="$1" -v b="$2" 'BEGIN {
+        na = split(a, x, " "); nb = split(b, y, " ")
+        if (na == 0 || nb == 0) { print 2000000000; exit }
+        m = (na < nb ? na : nb); s = 0
+        for (i = 1; i <= m; i++) s += (x[i] + 0 > y[i] + 0 ? x[i] - y[i] : y[i] - x[i])
+        s += (na > nb ? na - nb : nb - na) * 1000000
+        print s
+    }'
+}
+
+# 校验属性选中的配置是否与真实拓扑相符；不符返回 1
+# $1: 配置名  $2: 配置目录
+topo_config_ok() {
+    _oc="$2/$1.json"
+    [ -f "$_oc" ] || return 1
+    _on=$(topo_nr_core); _om=$(topo_max_freq)
+    _cn=$(config_nr "$_oc")
+    [ "$_cn" -gt 0 ] || return 1
+    [ "$_on" -eq "$_cn" ] || return 1
+    [ "$_om" -gt 0 ] || return 1
+    _ol=$(topo_freq_list); _cl=$(config_freq_list "$_oc")
+    _nsp=$(printf '%s' "$_ol" | wc -w | tr -d ' ')
+    [ "$_nsp" -gt 0 ] || return 1
+    _od=$(freq_dist "$_ol" "$_cl")
+    # 逐簇频率差的平均值不超过 20% 才算同一平台
+    [ $(( _od * 100 )) -le $(( _om * 20 * _nsp )) ] || return 1
+    return 0
+}
+
+# 按真实拓扑挑距离最小的同核数配置；无候选时输出空
+# $1: 配置目录
+topo_pick_config() {
+    _pn=$(topo_nr_core)
+    _pl=$(topo_freq_list)
+    _pbest= _pscore=
+    for _pf in "$1"/*.json; do
+        [ -f "$_pf" ] || continue
+        _pcn=$(config_nr "$_pf")
+        [ "$_pcn" -gt 0 ] || continue
+        [ "$_pcn" -eq "$_pn" ] || continue
+        _pdf=$(freq_dist "$_pl" "$(config_freq_list "$_pf")")
+        if [ -z "$_pscore" ] || [ "$_pdf" -lt "$_pscore" ]; then
+            _pbest=$_pf
+            _pscore=$_pdf
+        fi
+    done
+    [ -n "$_pbest" ] && basename "$_pbest" .json
 }

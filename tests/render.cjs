@@ -149,6 +149,9 @@ class Cdp {
         restoreInPage: q('page-frequency').contains(document.querySelector('.restore-card')),
         devInPage: q('page-about').contains(q('device-info')),
         appRows: document.querySelectorAll('#app-list .rule-row').length,
+        appTitles: [...document.querySelectorAll('#app-list .rule-title strong')].map(n => n.textContent).join('|'),
+        appPkgs: [...document.querySelectorAll('#app-list .rule-pkg')].map(n => n.textContent).join('|'),
+        appCount: q('app-count').textContent,
         special: document.querySelectorAll('#special-rules .rule-row').length,
         tune: q('tune-switch').getAttribute('aria-checked'),
         infoRows: q('system-info').children.length,
@@ -195,7 +198,10 @@ class Cdp {
       '刷新率与恢复卡片在频率页内': checks.refreshInPage === true && checks.restoreInPage === true,
       '机型信息在关于页内': checks.devInPage === true,
       '特殊规则 2 条': checks.special === 2,
-      '应用规则行 >= 3': checks.appRows >= 3,
+      '应用页只列游戏（3 款）': checks.appRows === 3 && checks.appCount.indexOf('3 款游戏') === 0,
+      '应用页显示游戏中文名': ['王者荣耀', '原神', '示例游戏'].every(n => checks.appTitles.split('|').includes(n)),
+      '应用页标题不显示包名': checks.appTitles.indexOf('com.tencent.tmgp.sgame') === -1,
+      '应用页副标题保留包名': checks.appPkgs.split('|').length === 3 && checks.appPkgs.indexOf('com.miHoYo.Yuanshen') >= 0,
       '调优开关已打开': checks.tune === 'true',
       '设备信息 >= 7 条': checks.infoRows >= 7,
       '版本号来自后端': checks.version === 'v1.4.0',
@@ -265,8 +271,8 @@ class Cdp {
       '应用清单失败仍识别设备' + (degraded.live ? '' : '（实际 ' + JSON.stringify(degraded) + '）'));
     results.push((degraded.notice.indexOf('应用清单读取失败') >= 0 ? 'PASS ' : 'FAIL ') +
       '应用清单失败给出提示' + (degraded.notice ? '' : '（无提示）'));
-    results.push((degraded.appRows === 0 && degraded.empty.indexOf('未能枚举到应用包名') >= 0 ? 'PASS ' : 'FAIL ') +
-      '应用清单为空时有说明' + (degraded.appRows === 0 && degraded.empty.indexOf('未能枚举到应用包名') >= 0 ? '' :
+    results.push((degraded.appRows === 0 && degraded.empty.indexOf('未检测到已安装的游戏') >= 0 ? 'PASS ' : 'FAIL ') +
+      '应用清单为空时有说明' + (degraded.appRows === 0 && degraded.empty.indexOf('未检测到已安装的游戏') >= 0 ? '' :
         '（实际 ' + degraded.appRows + ' 行 / ' + JSON.stringify(degraded.empty) + '）'));
     results.push((degraded.freqCards === 4 ? 'PASS ' : 'FAIL ') +
       '应用清单失败不影响频率页' + (degraded.freqCards === 4 ? '' : '（实际 ' + degraded.freqCards + ' 张）'));

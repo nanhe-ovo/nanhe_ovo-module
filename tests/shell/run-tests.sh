@@ -147,10 +147,14 @@ make_fixture() {
         "$MODULE/script/libthread.sh" > "$D/data/adb/modules/nanhe_ovo/script/libthread.sh"
     sed -e "s#/data/adb/modules/nanhe_ovo#$D/data/adb/modules/nanhe_ovo#g" \
         -e "s#/data/adb/nanhe_ovo#$D/data/adb/nanhe_ovo#g" \
+        -e "s#/sys/#$D/sys/#g" \
+        "$MODULE/script/libtopo.sh" > "$D/data/adb/modules/nanhe_ovo/script/libtopo.sh"
+    sed -e "s#/data/adb/modules/nanhe_ovo#$D/data/adb/modules/nanhe_ovo#g" \
+        -e "s#/data/adb/nanhe_ovo#$D/data/adb/nanhe_ovo#g" \
         -e "s#/sdcard#$D/sdcard#g" \
         -e "s#/sys/#$D/sys/#g" \
         "$MODULE/script/thread_svc.sh" > "$D/data/adb/modules/nanhe_ovo/script/thread_svc.sh"
-    chmod +x "$D/data/adb/modules/nanhe_ovo/script/libthread.sh" "$D/data/adb/modules/nanhe_ovo/script/thread_svc.sh"
+    chmod +x "$D/data/adb/modules/nanhe_ovo/script/libthread.sh" "$D/data/adb/modules/nanhe_ovo/script/libtopo.sh" "$D/data/adb/modules/nanhe_ovo/script/thread_svc.sh"
     # 五档线程规则与许可证
     mkdir -p "$D/data/adb/modules/nanhe_ovo/appopt"
     cp "$MODULE"/appopt/appopt_*.conf "$D/data/adb/modules/nanhe_ovo/appopt/" 2>/dev/null
@@ -164,6 +168,13 @@ make_fixture() {
     mkdir -p "$D/sys/devices/system/cpu/cpu0/core_ctl"
     printf '%s\n' 4 > "$D/sys/devices/system/cpu/cpu0/core_ctl/min_cpus"
     printf '%s\n' 6 > "$D/sys/devices/system/cpu/cpu0/core_ctl/max_cpus"
+    # CPU 拓扑夹具：4+4 双簇（0-3 @1.8GHz / 4-7 @2.8GHz），验证语义核展开成数字掩码
+    mkdir -p "$D/sys/devices/system/cpu/cpufreq/policy0" "$D/sys/devices/system/cpu/cpufreq/policy4"
+    printf '%s\n' '0 1 2 3' > "$D/sys/devices/system/cpu/cpufreq/policy0/related_cpus"
+    printf '%s\n' 1800000 > "$D/sys/devices/system/cpu/cpufreq/policy0/cpuinfo_max_freq"
+    printf '%s\n' '4 5 6 7' > "$D/sys/devices/system/cpu/cpufreq/policy4/related_cpus"
+    printf '%s\n' 2800000 > "$D/sys/devices/system/cpu/cpufreq/policy4/cpuinfo_max_freq"
+    printf '%s\n' '0-7' > "$D/sys/devices/system/cpu/present"
     grep -q "PATH=$D/bin:$HOST_PATH" "$D/control.sh" ||
         bad "后端 PATH 行未被替换（control.sh 的内部 PATH 写法已变动，桩命令无法生效）"
     grep -q "sys/kernel/random/boot_id" "$D/control.sh" &&
@@ -327,7 +338,8 @@ printf '\n== 应用列表与并发保护 ==\n'
 run_ctl apps
 eq "只输出合法包名" "$(printf '%s\n' "$OUT" | grep -c '^com\.')" 4
 hasnt "过滤垃圾行" "$OUT" "junk"
-has "命中名单的游戏带 game 标记" "$OUT" "com.tencent.tmgp.sgame	game"
+has "命中名单的游戏带中文名与 game 标记" "$OUT" "com.tencent.tmgp.sgame	王者荣耀	game"
+eq "非游戏包第二列回退包名" "com.example.reader	com.example.reader	app" "$(printf '%s\n' "$OUT" | grep 'com.example.reader')"
 hasnt "未命中名单的包不带标记" "$(printf '%s\n' "$OUT" | grep 'com.example.reader')" "game"
 run_ctl rules
 eq "rules 输出规则原文" "$RC" 0
@@ -527,6 +539,12 @@ mv "$WORK/runtime-real" "$D/data/adb/nanhe_ovo/runtime"
 ########################################
 printf '\n== 安装器 ==\n'
 INST="$WORK/inst"
+_mk_policy() { # $1=根 $2=policy编号 $3=最高频kHz $4=related_cpus
+    _p="$1/sys/devices/system/cpu/cpufreq/policy$2"
+    mkdir -p "$_p"
+    printf '%s\n' "$4" > "$_p/related_cpus"
+    printf '%s\n' "$3" > "$_p/cpuinfo_max_freq"
+}
 make_install() {
     D=$1; plat=$2; abi=$3; MODP=$4
     rm -rf "$D"; mkdir -p "$D/bin"
@@ -539,7 +557,19 @@ make_install() {
         -e "s#/data/adb/nanhe_ovo#$D/data/adb/nanhe_ovo#g" \
         -e "s#/data/adb/modules#$D/data/adb/modules#g" \
         -e "s#/sdcard#$D/sdcard#g" \
-        "$MODP/customize.sh" "$MODP/script/pathinfo.sh"
+        -e "s#/sys/#$D/sys/#g" \
+        "$MODP/customize.sh" "$MODP/script/pathinfo.sh" "$MODP/script/libsysinfo.sh"
+    # 与平台匹配的 CPU 拓扑夹具：安装期的拓扑指纹校验必须读测试根，不能读宿主 /sys
+    mkdir -p "$D/sys/devices/system/cpu/cpufreq"
+    case "$plat" in
+        gs201)
+            _mk_policy "$D" 0 1800000 '0 1 2 3'; _mk_policy "$D" 1 2400000 '4 5'; _mk_policy "$D" 2 2800000 '6 7' ;;
+        mt6991)
+            _mk_policy "$D" 0 2400000 '0 1 2 3'; _mk_policy "$D" 1 3300000 '4 5 6'; _mk_policy "$D" 2 3630000 '7' ;;
+        *)
+            _mk_policy "$D" 0 1800000 '0 1 2 3'; _mk_policy "$D" 1 2400000 '4 5'; _mk_policy "$D" 2 2800000 '6 7' ;;
+    esac
+    printf '%s\n' '0-7' > "$D/sys/devices/system/cpu/present"
     printf '#!/bin/sh\ncase "$1" in\n ro.product.cpu.abi) echo "%s";;\n ro.board.platform) echo "%s";;\n ro.product.board) echo "";;\n *) echo "";;\nesac\n' "$abi" "$plat" > "$D/bin/getprop"
     chmod +x "$D/bin/getprop"
 }
@@ -572,7 +602,22 @@ has "回落时有提示" "$OUT" "通用模板"
 printf '\n'
 make_install "$INST" nosuch arm64-v8a "$INST/mod"
 run_install
-eq "未知平台回落到模板" "same" "$(cmp -s "$INST/sdcard/Android/yc/uperf/uperf.json" "$MODULE/config/template.json" && echo same || echo diff)"
+# 属性完全不认识时按真实拓扑挑配置（4+4 @2.8GHz 正好命中 gs201），不再直接退模板
+eq "未知平台按拓扑指纹选到配置" "same" "$(cmp -s "$INST/sdcard/Android/yc/uperf/uperf.json" "$MODULE/config/gs201.json" && echo same || echo diff)"
+eq "未知平台记录来源为 topo" "$(cat "$INST/data/adb/nanhe_ovo/config_source.txt")" topo
+
+printf '\n'
+# 伪装机型：属性说 gs201（4+2+2 @1.8/2.4/2.8），实际是 4+3+1 @2.4/3.3/3.63
+make_install "$INST" gs201 arm64-v8a "$INST/mod"
+rm -rf "$INST/sys/devices/system/cpu/cpufreq"
+_mk_policy "$INST" 0 2400000 '0 1 2 3'
+_mk_policy "$INST" 1 3300000 '4 5 6'
+_mk_policy "$INST" 2 3630000 '7'
+run_install
+eq "伪装机型按拓扑改用真实平台配置" "same" "$(cmp -s "$INST/sdcard/Android/yc/uperf/uperf.json" "$MODULE/config/mtd9400.json" && echo same || echo diff)"
+eq "伪装机型配置名被纠正" "$(cat "$INST/data/adb/nanhe_ovo/device_config.txt")" mtd9400
+eq "伪装机型记录来源为 topo" "$(cat "$INST/data/adb/nanhe_ovo/config_source.txt")" topo
+has "伪装机型写日志说明" "$OUT" "与本机拓扑不符"
 
 printf '\n'
 make_install "$INST" gs201 armeabi-v7a "$INST/mod"
@@ -843,7 +888,9 @@ eq "开启线程引擎退出 0" "$RC" 0
 eq "开启返回 ok" "ok	thread	on" "$OUT"
 eq "开启后无禁用标记" "no" "$([ -f "$RR/thread_disabled" ] && echo yes || echo no)"
 eq "active.conf 已生成" "yes" "$([ -f "$THR/active.conf" ] && echo yes || echo no)"
-has "档位规则并入 active.conf" "$(cat "$THR/active.conf")" "surfaceflinger=all-core"
+has "档位规则并入 active.conf" "$(cat "$THR/active.conf")" "surfaceflinger=0-7"
+hasnt "active.conf 不再残留语义核名" "$(cat "$THR/active.conf")" "=hp-core"
+hasnt "active.conf 不再残留 e-core" "$(cat "$THR/active.conf")" "=e-core"
 i=0
 while [ ! -s "$FAKE/appopt.invoked" ] && [ "$i" -lt 20 ]; do i=$((i + 1)); sleep 0.1; done
 has "AppOpt 已被拉起" "$(cat "$FAKE/appopt.invoked" 2>/dev/null)" "-b nanhe_opt"
@@ -856,7 +903,11 @@ run_ctl threadrule com.example.game game
 eq "绑定游戏预设退出 0" "$RC" 0
 eq "绑定返回 ok" "ok	threadrule	com.example.game	game" "$OUT"
 has "块头标记已写入" "$(cat "$THR/user.conf")" "# nanhe_threadrule pkg=com.example.game preset=game"
-has "游戏规则块内容" "$(cat "$THR/user.conf")" "UnityMain=hp-core"
+has "游戏主线程落在最高频核" "$(cat "$THR/user.conf")" "UnityMain=7"
+has "渲染线程落在大簇" "$(cat "$THR/user.conf")" "RenderThread*=4-7"
+has "worker 线程跨低簇与大簇" "$(cat "$THR/user.conf")" "Thread-*=0-3,4-7"
+hasnt "user.conf 不残留语义核名" "$(cat "$THR/user.conf")" "hp-core"
+eq "游戏预设无空掩码" "no" "$(grep -q '={\|= *{\|=$' "$THR/user.conf" && echo yes || echo no)"
 has "规则已并入 active.conf" "$(cat "$THR/active.conf")" "nanhe_threadrule pkg=com.example.game"
 run_ctl threadrules
 eq "threadrules 退出 0" "$RC" 0
@@ -881,13 +932,42 @@ run_ctl threadrules
 eq "线程规则文件不存在时退出 0" "$RC" 0
 eq "空线程规则输出为空" "" "$OUT"
 
+printf '\n== 拓扑展开（空掩码回归）==\n'
+topo_case() { # $1=名称 $2="freq:cpus" 列表 $3=期望 "ALL|BG|REND|MAIN|SPIRE"
+    TT="$FAKE/topo-$1"
+    rm -rf "$TT"; mkdir -p "$TT/sys/devices/system/cpu/cpufreq"
+    _n=0
+    for _c in $2; do
+        _p="$TT/sys/devices/system/cpu/cpufreq/policy$_n"
+        mkdir -p "$_p"
+        printf '%s\n' "${_c#*:}" | tr ',' ' ' > "$_p/related_cpus"
+        printf '%s\n' "${_c%%:*}" > "$_p/cpuinfo_max_freq"
+        _n=$((_n + 1))
+    done
+    printf '%s\n' '0-7' > "$TT/sys/devices/system/cpu/present"
+    sed "s#/sys/#$TT/sys/#g" "$MODULE/script/libtopo.sh" > "$TT/libtopo.sh"
+    _res=$( TOPO_FILE="$TT/topo.txt"; . "$TT/libtopo.sh"; topo_init
+        printf '%s|%s|%s|%s|%s\n' "$TOPO_ALL" "$TOPO_BG" "$TOPO_REND" "$TOPO_MAIN" "$TOPO_SPIRE" )
+    eq "拓扑 $1 展开结果" "$3" "$_res"
+}
+# 4+4：渲染给高簇，主线程最后一颗，后台低簇
+topo_case 4p4 '1800000:0,1,2,3 2800000:4,5,6,7' '0-7|0-3|4-7|7|0'
+# 2+6（骁龙 8 Elite）：2 颗 Prime + 6 颗性能核，渲染不能只给 Prime
+topo_case 2p6 '2000000:0,1 3500000:2,3,4,5,6,7' '0-7|0-1|2-7|7|0'
+# 单簇（8 颗同频）：全部核心都在同一组，不能出现空集
+topo_case 1c '3000000:0,1,2,3,4,5,6,7' '0-7|0-3|0-7|0-7|0'
+# 1+3+4 三簇：渲染取中间簇
+topo_case 1p3p4 '1800000:0 2400000:1,2,3 3200000:4,5,6,7' '0-7|0|1-3|7|0'
+# 2+4+2：高簇只有 2 颗，标记为尖顶族（渲染改走中间簇）
+topo_case 2p4p2 '1800000:0,1 2400000:2,3,4,5 3200000:6,7' '0-7|0-1|2-5|7|1'
+
 printf '\n== crazy 档保核与线程档位联动 ==\n'
 run_ctl mode crazy
 eq "进入 crazy 后 min_cpus 抬到 max" "$(cat "$FAKE/sys/devices/system/cpu/cpu0/core_ctl/min_cpus")" "6"
 eq "保核基线已记录" "yes" "$([ -f "$RR/corectl.aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.tsv" ] && echo yes || echo no)"
 run_ctl status
 eq "线程档位随超频档切换" "crazy" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="thread_profile"{print $3}')"
-has "超频档渲染线程固定大核" "$(cat "$THR/active.conf")" "RenderThread*=hp-core"
+has "超频档渲染线程固定大核" "$(cat "$THR/active.conf")" "RenderThread*=7"
 run_ctl mode balance
 eq "退出 crazy 后恢复基线 min_cpus" "$(cat "$FAKE/sys/devices/system/cpu/cpu0/core_ctl/min_cpus")" "4"
 run_ctl status

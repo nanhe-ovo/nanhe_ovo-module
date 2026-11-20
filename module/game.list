@@ -1,18 +1,60 @@
-# 内置游戏名单：应用页命中这些包名时置顶展示。
-# 来源：Uperf-Game-Turbo（Apache-2.0，作者 Matt Yang / 吟惋兮）perapp_powermode.txt
-# 中绑定 performance 的游戏；评测工具（fast 档）不列入。每行一个包名，# 开头为注释。
+# 内置游戏名单：应用页只展示这里的游戏，并显示中文名。
+# 格式：包名<TAB>游戏名（# 开头为注释；第二列可含空格）
+# 来源：Uperf-Game-Turbo（Apache-2.0）performance 档 + 厂商商店/官方包名核对。
 
-com.tencent.tmgp.sgame
-com.miHoYo.Yuanshen
-com.tencent.tmgp.pubgmhd
-com.miHoYo.bh3.bilibili
-com.miHoYo.enterprise.NGHSoD
-com.miHoYo.ys.bilibili
-com.tencent.lolm
-com.netease.wotb
-com.tencent.tmgp.speedmobile
-com.tencent.KiHan
-fi.twomenandadog.zombiecatchers
-com.garena.game.kgtw
-com.tencent.ig
-com.supercell.brawlstars
+# ---- 腾讯 ----
+com.tencent.tmgp.sgame	王者荣耀
+com.tencent.lolm	英雄联盟手游
+com.tencent.tmgp.pubgmhd	和平精英
+com.tencent.tmgp.cf	穿越火线：枪战王者
+com.tencent.mf.uam	暗区突围
+com.tencent.tmgp.cod	使命召唤手游
+com.tencent.tmgp.dfm	三角洲行动
+com.tencent.tmgp.speedmobile	QQ飞车手游
+com.tencent.KiHan	火影忍者
+com.tencent.jkchess	金铲铲之战
+
+# ---- 米哈游 ----
+com.miHoYo.Yuanshen	原神
+com.miHoYo.GenshinImpact	原神（国际）
+com.miHoYo.bh3	崩坏3
+com.miHoYo.bh3.bilibili	崩坏3（B站）
+com.miHoYo.enterprise.NGHSoD	崩坏3（渠道）
+com.miHoYo.ys.bilibili	原神（B站）
+com.miHoYo.hkrpg	崩坏：星穹铁道
+com.miHoYo.Nap	绝区零
+
+# ---- 库洛 / 鹰角 / 其他二次元 ----
+com.kurogame.mingchao	鸣潮
+com.kurogame.pgr	战双帕弥什
+com.tencent.tmgp.kurogame.haru	战双帕弥什（应用宝）
+com.hypergryph.arknights	明日方舟
+com.bilibili.azurlane	碧蓝航线
+
+# ---- 网易 ----
+com.netease.party	蛋仔派对
+com.netease.nshm	逆水寒手游
+com.netease.l22	永劫无间手游
+com.netease.dwrg	第五人格
+com.netease.mrzh	明日之后
+com.netease.onmyoji	阴阳师
+com.netease.sky	光·遇
+com.netease.wotb	坦克世界闪击战
+
+# ---- 海外竞技 / 沙盒 ----
+com.tencent.ig	PUBG Mobile
+com.garena.game.kgtw	传说对决
+com.supercell.brawlstars	荒野乱斗
+com.supercell.clashofclans	部落冲突
+com.supercell.clashroyale	皇室战争
+com.dts.freefireth	Free Fire
+com.dts.freefiremax	Free Fire MAX
+com.mobile.legends	无尽对决
+com.activision.callofduty.shooter	使命召唤手游（国际）
+com.activision.callofduty.warzone	使命召唤：战区手游
+com.ea.gp.apexlegendsmobilefps	Apex 英雄手游
+com.axlebolt.standoff2	Standoff 2
+com.roblox.client	Roblox
+com.mojang.minecraftpe	我的世界
+com.pubg.imobile	BGMI
+fi.twomenandadog.zombiecatchers	僵尸捕手

@@ -510,20 +510,34 @@ filter_pkgs() {
     awk '/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$/ && !seen[$0]++'
 }
 
-# 游戏标记：包名命中内置名单时在第二列加 `game`，供前端置顶展示。
-# 名单来自 Uperf-Game-Turbo 的 performance 绑定（Apache-2.0），评测工具不列入。
+# 游戏标记：输出三列 `包名<TAB>游戏名<TAB>game|app`。
+# 名单来自 Uperf-Game-Turbo 的 performance 绑定（Apache-2.0）并补入常用游戏；
+# 第二列为中文名，前端应用页只展示 game 行并优先显示名称。
 GAME_LIST="$MODULE/game.list"
 game_tag() {
     if [ -f "$GAME_LIST" ] && [ -r "$GAME_LIST" ]; then
-        awk 'NR==FNR {
-            line=$0; sub(/[ \t#].*/, "", line)
-            if (line != "") g[line]=1
+        awk -F '\t' '
+        NR == FNR {
+            line = $0
+            sub(/#.*/, "", line)
+            gsub(/^[ \t]+|[ \t]+$/, "", line)
+            if (line == "") next
+            split(line, f, "\t")
+            p = f[1]; gsub(/^[ \t]+|[ \t]+$/, "", p)
+            if (p == "") next
+            nm = (f[2] != "" ? f[2] : "")
+            gsub(/^[ \t]+|[ \t]+$/, "", nm)
+            if (nm == "") nm = p
+            name[p] = nm
             next
         }
-        ($1 in g) { print $1 "\tgame"; next }
-        { print $1 }' "$GAME_LIST" -
+        {
+            p = $1
+            if (p in name) { print p "\t" name[p] "\tgame"; next }
+            print p "\t" p "\tapp"
+        }' "$GAME_LIST" -
     else
-        cat
+        awk '{ print $1 "\t" $1 "\tapp" }'
     fi
 }
 
@@ -891,15 +905,35 @@ susfs_state() {
 valid_thread_preset() {
     case "$1" in ui|game|bg|full|delete) return 0;; *) return 1;; esac
 }
-# 预设 → AppOptR 规则块（语义核由引擎按本机拓扑解析，跨平台可用）
+# 预设 → AppOptR 规则块。语义核按本机拓扑先展开成数字掩码：
+# 引擎在 2 簇（4+4 / 2+6）与单簇平台上会把 p-core、hp-core 判成空集，
+# 空集会连带清空基础 cpuset 的 cpus，导致线程被塞进无 CPU 的 cgroup（启动闪退）。
 threadrule_block() { # $1: package  $2: preset
     TRB_PKG=$1 TRB_P=$2
+    thread_topo
     printf '# nanhe_threadrule pkg=%s preset=%s\n' "$TRB_PKG" "$TRB_P"
     case "$TRB_P" in
-        ui)   printf '%s=e-core,p-core {\n\tRenderThread=hp-core\n}\n' "$TRB_PKG" ;;
-        game) printf '%s=p-core {\n\tUnityMain=hp-core\n\tGameThread=hp-core\n\tUnityGfxDeviceW=p-core\n\tRenderThread*=p-core\n\tRHIThread=p-core\n\tThread-*=p-core\n\tJob.worker*=p-core\n\tTaskGraphNP*=p-core\n\tFAsyncLoading=e-core,p-core\n\tAudioTrack=e-core\n}\n' "$TRB_PKG" ;;
-        bg)   printf '%s=e-core\n' "$TRB_PKG" ;;
-        full) printf '%s=all-core\n' "$TRB_PKG" ;;
+        ui)
+            printf '%s=%s,%s {\n\tRenderThread=%s\n}\n' "$TRB_PKG" "$TOPO_REND" "$TOPO_MAIN" "$TOPO_REND"
+            ;;
+        game)
+            printf '%s=%s {\n' "$TRB_PKG" "$TOPO_ALL"
+            printf '\tUnityMain=%s\n' "$TOPO_MAIN"
+            printf '\tGameThread=%s\n' "$TOPO_MAIN"
+            printf '\tUnityGfxDeviceW=%s\n' "$TOPO_REND"
+            printf '\tRenderThread*=%s\n' "$TOPO_REND"
+            printf '\tRHIThread=%s\n' "$TOPO_REND"
+            printf '\tThread-*=%s,%s\n' "$TOPO_BG" "$TOPO_REND"
+            printf '\tJob.worker*=%s,%s\n' "$TOPO_BG" "$TOPO_REND"
+            printf '\tTaskGraphNP*=%s,%s\n' "$TOPO_BG" "$TOPO_REND"
+            printf '\tFAsyncLoading=%s\n' "$TOPO_BG"
+            printf '\tAudioTrack=%s\n' "$TOPO_BG"
+            printf '\tAudioOut_*=%s\n' "$TOPO_BG"
+            printf '\tbinder*=%s\n' "$TOPO_BG"
+            printf '}\n'
+            ;;
+        bg) printf '%s=%s\n' "$TRB_PKG" "$TOPO_BG" ;;
+        full) printf '%s=%s\n' "$TRB_PKG" "$TOPO_ALL" ;;
     esac
 }
 cmd_thread() {

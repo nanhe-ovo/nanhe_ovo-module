@@ -137,17 +137,24 @@
     return rules;
   }
 
-  // 应用清单：行首包名，第二列可选 game 标记；返回 { pkg, game }，游戏排在前面。
+  // 应用清单：`包名<TAB>名称<TAB>game|app`；兼容旧两列 `包名<TAB>game`。
+  // 名称可含空格（如「崩坏 3」），因此只按制表符分列。
   function parseApps(text) {
     const out = [], seen = new Set();
     String(text).split(/\r?\n/).forEach(line => {
-      const parts = line.trim().split(/\s+/);
-      const pkg = parts[0];
+      const raw = line.trim();
+      if (!raw) return;
+      const cols = raw.split('\t');
+      const pkg = (cols[0] || '').trim().split(/\s+/)[0];
       if (!validPackage(pkg) || pkg === '*' || pkg === '-' || seen.has(pkg)) return;
       seen.add(pkg);
-      out.push({ pkg, game: parts[1] === 'game' });
+      let name = (cols[1] || '').trim();
+      let game = false;
+      if (name === 'game') { game = true; name = ''; }
+      else if (cols[2]) game = cols[2].trim() === 'game';
+      out.push({ pkg, name: name || pkg, game });
     });
-    return out.sort((a, b) => (a.game === b.game ? a.pkg.localeCompare(b.pkg) : a.game ? -1 : 1));
+    return out.sort((a, b) => (a.game === b.game ? a.name.localeCompare(b.name, 'zh-CN') : a.game ? -1 : 1));
   }
 
   // 机型信息：kv <section> <label> <value>，只做展示，字段名与顺序由后端决定。

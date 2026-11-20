@@ -547,9 +547,9 @@
         "fast": {
             "*": {
                 "cpu.latencyTime": 0.0,
-                "cpu.slowLimitPower": 2.5,
-                "cpu.fastLimitPower": 2.5,
-                "cpu.fastLimitCapacity": 0.0,
+                "cpu.slowLimitPower": 4.0,
+                "cpu.fastLimitPower": 10.0,
+                "cpu.fastLimitCapacity": 360.0,
                 "cpu.margin": 0.4
             },
             "idle": {

@@ -1,186 +1,71 @@
 # 南何ovo · 性能调度
 
-基于 [Uperf-Game-Turbo](https://github.com/yinwanxi/Uperf-Game-Turbo) 的 Android 性能调度模块（Magisk / KernelSU / APatch 通用可刷入 zip），自带一套纯本地的 WebUI：全局模式、分应用规则、CPU / GPU 频率区间、屏幕刷新率（带管理总开关，关闭时完全交还系统）、机型信息与自动运行日志。
+Magisk / KernelSU / APatch 通用的 Android 性能调度模块。v1.11.0 起不再内置或启动 uperf 二进制：CPU 配置继续保存在 JSON 中，构建期生成 `cpu_profiles.tsv`，运行期由自研 `cpu_policy.sh` 直接写标准 cpufreq 节点；线程调度仍由 AppOptR 负责。
 
-界面是 Miuix 观感的白卡 + 悬浮液态玻璃底栏，**不联网、不上传任何数据**。
-
-想直接拿文案去发布，看 [docs/模块介绍.md](docs/模块介绍.md)：一句话版 / 群公告短版 / 发布帖长版，含完整出处表与已知边界。
-
-- 版本：`v1.8.0`（versionCode `202611192`）
+- 版本：`v1.11.0`（versionCode `202611257`）
 - 模块 id：`nanhe_ovo`
-- 可刷入包：[`nanhe_ovo-v1.8.0-20261119.zip`](https://github.com/nanhe-ovo/nanhe_ovo-module/releases/download/v1.8.0/nanhe_ovo-v1.8.0-20261119.zip)（见 Release 页）
-- 要求：**arm64** 设备（内置 uperf 与 busybox 只有 aarch64 版本）
+- 刷入包：`nanhe_ovo-v1.11.0-20261125.zip`（见 Release 页）
+- 要求：**arm64** 设备；需要支持模块 WebUI 的管理器与 Root
 
-![首页](docs/screenshots/ui-overview.png)
+## 这一版做了什么
 
-## 特性
+- **去除内嵌 Uperf**：删除 `bin/uperf` 与 `libuperf.sh`；`uperf.json` / `perapp_powermode.txt` 只作为配置数据保留，不再依赖 uperf 进程。
+- **自研表驱动 CPU 策略**：`tools/gen_cpu_profiles.py` 从 111 份 SoC 配置的 `powerModel` 与模式功率墙生成每簇上限表；`cpu_policy.sh` 选择不超过目标值的最高真实 OPP，写 `scaling_max_freq`。`crazy` 的 0 表示运行期取 `cpuinfo_max_freq`。
+- **轻量前台调度**：`game_watch.sh` 每 4 秒扫 top-app cpuset 的 `/proc/<pid>/cmdline`，游戏进前台切 `fast`，退出回 `balance`，灭屏 `powersave`；不再每 2 秒跑两次 `dumpsys`。
+- **分应用规则迁移**：覆盖升级时把旧版 `* performance` 模板合并为新模板（48 款游戏 `fast`、`- powersave`、`* balance`），保留自定义包名。
+- **温控基线重置**：模式切换时丢弃上一模式的旧上限，避免 `fast` 被 `balance` 的旧基线夹住。
+- **WebUI**：底栏改为离底边 16px 的实色 Miuix 悬浮胶囊，当前页浅蓝高亮；移除液态玻璃、背景模糊、折射/色散/镜片滑动。页面纯本地，不联网。
 
-### 调度
-
-- **全局性能模式**：面板里一排模式卡（省电 / 均衡 / 性能 / 极速 / 超频，具体取决于 `uperf.json` 的 presets），一点即切换，写入 `/sdcard/Android/yc/uperf/cur_powermode.txt`。
-- **超频模式（crazy）**：v1.4.0 起全部平台配置都带 `crazy` preset（999 上限 + margin/burst 1.0 + 关闭低效频点限制）；切换时后端把**可写**的 CPU 集群上限推到频率表最高档（表内最高、不超出厂上限），写不进的节点（内核/SELinux 只读）分类记日志跳过，离开该模式自动恢复开机基线。
-- **分应用规则**：给单个应用绑定调度策略，写进 `perapp_powermode.txt`；游戏页可搜索、改绑、删除。
-- **游戏专属页**：应用页只列 `game.list` 内的游戏并显示中文名（内置 47 款，副标题保留包名），搜索同时匹配游戏名与包名；非游戏应用跟随默认规则，不在列表里出现。
-- 包名枚举三路兜底（`pm list packages` / `packages.list` / `dumpsys`），全部失败才留空并记日志。
-
-### 平台配置
-
-- 安装器按 `ro.board.platform` 选平台表，模块内带 **98 份配置（97 份平台表 + template）**，覆盖骁龙 / 天玑 / Exynos / 麒麟 / Tensor / 展锐。
-- v1.3.2 补上 **Dimensity 9400（mt6991 → `mtd9400.json`）**：4×A7xx / 3×X4 / 1×X925 三段功耗模型，presets 带 DDR 保底（3.2 / 2.667 / 5.5 GB/s），不再回退到没有功耗模型的 `template.json`。
-- v1.4.0 按全平台调度策略文档新增 7 份 **2026 新平台推测配置**：`mtd9600pro` / `mtd9600m` / `mtd9500s` / `mtd8500` / `sdm8e6` / `sdm8e6x` / `exynos2700`，功耗模型按 Uperf 方法论推算，`ro.board.platform` 新代号未公开前不参与自动匹配，真机可手动换用并在文档边界里声明。
-- v1.5.0 补齐 23 份 2020 年后存量推测表；v1.6.0 保持既有可用配置不变，只定向调整 `sdm8elite.json` 的低分组派活。
-- 回退模板时安装器会写一条 `warn config` 日志（面板「关于 → 运行日志」可见），说明「uperf 不会接管 CPU 频率」，避免把系统 DVFS 的锯齿误判成模块降频。降频排查过程见 [docs/降频分析与v1.3.2优化.md](docs/降频分析与v1.3.2优化.md)。
-- 三份原理与策略文档随包携带在 `module/docs/`：Uperf 运行原理、全平台调度策略速查、降频分析与优化说明。
-
-### 频率
-
-- 只从设备真实的频率表里选最小 / 最大，边界不在表内直接拒绝，写入后回读校验、失败回滚。
-- 一键「恢复开机频率」，回到本次开机基线。
-- **不做开机持久化**：uperf 切换模式时会重写同一批节点，手动区间可能被调度覆盖（面板内已注明）。
-
-### 刷新率
-
-- 十档候选 `30 / 48 / 60 / 72 / 90 / 120 / 144 / 165 / 180 / 240`，但**只列出设备真正声明过的**：`dumpsys display` 与 `dumpsys SurfaceFlinger` 一起解析，认 `fps=`、`refreshRate=`、`renderFrameRate=`、`framerate=`、`mRefreshRate=`、`vsyncPeriod=`（纳秒换算）与 `1880x3008@120.0Hz` 这类写法。
-- 未声明档位：前端虚线置灰不可点，后端同样拒绝（`<HZ> Hz is not supported by this device`）。
-- 读不到档位表时不锁死：`status` 给 `refresh_known=0`，前端放开全部十档并提示「开启管理后可尝试」，写入交由系统决定。
-- **刷新率管理总开关（v1.6.0）**：默认关闭，关闭时模块不写系统刷新率、开机也不应用；开启后同时钉 `peak_refresh_rate` 与 `min_refresh_rate`，静止、熄屏回来不会偷降 60Hz。关闭开关会还原系统原值。
-- 修复「开机锁 60Hz」：总开关开启且目标受支持时按保存值重写并补写两次；新安装不再自动抢最高档，旧版有 `refresh.txt` 时兼容为开启。
-- **天玑 Mali GPU**：恢复内核 fast DVFS；按模式在真实 OPP 表上抬 `min_freq`（性能 75%、极速 85%、超频 95%），不改 `max_freq`，省电 / 均衡恢复开机快照。
-- **骁龙 8 Elite 低分组**：开启 `sdm8elite.json` 的 sched，`0-1` 作为轻载组，音频 / 网络 / 解码线程定向派活并由 util 升频。
-
-### 线程调度（v1.7.0）
-
-- 集成 **AppOptR**（作者 SutoLiu，GPL-3.0，https://gitee.com/sutoliu/AppOptR）作为线程引擎：进程创建与线程改名即时生效（eBPF，内核无 BTF 自动回退轮询），按 cpuset 分组放置线程，不改频率、不改优先级。
-- **五档规则随模式自动切换**（`module/appopt/appopt_*.conf`，语义核 e-core / p-core / hp-core / all-core，跨平台）：省电档收紧大核使用降低功耗；极速 / 超频档渲染线程固定大核、worker 共享中大核、IO 隔离中核，帧率更稳。
-- **按真实拓扑展开规则**：生成配置前探测各 policy 的 `related_cpus` 与 `cpuinfo_max_freq`，把语义核翻译成确定的核编号（全核 / 最低簇 / 渲染簇 / 主线程核）。2 簇（4+4、2+6）与单簇（同频 8 核）平台不再出现空集，A510 之类小核也会参与调度。
-- **超频档保核**：进入 crazy 时 core_ctl `min_cpus=max_cpus`（进档前记基线），退出恢复，减少热插拔与线程迁移抖动。
-- **单应用线程绑定**：游戏页每个游戏可绑定线程预设（界面 / 游戏 / 后台 / 全核 / 不绑定），保存立即生效，块头带 `# nanhe_threadrule` 标记供面板还原。
-- **首页总开关**：关闭时停守护进程并清理 cpuset 分组，重启不自动拉起；开启时按当前模式重新生成配置并启动。
-- 已知限制：语义核角色由频率分簇推导，同频合簇的内核会把多簇并成一组，此时渲染/主线程会落在同一组核上；规则仍是确定的数字掩码，不会出现空集。
-
-### 系统调优
-
-默认开启：开机执行 uperf 上游的 `powercfg_once.sh` / `platform_special.sh` / `miui_migt.sh`（压平厂商调度、处理温控进程等）。关闭后只启动 uperf 引擎；状态存于 `/data/adb/nanhe_ovo/tune_disabled`，**改动下次开机生效**。
-
-### 关于页
-
-品牌 / 型号 / 制造商 / 设备代号 / 指纹，Android / API / 安全补丁 / 槽位 / SELinux / Build / 内核，架构 / 核心数 / 硬件 / 主板 / CPU 温度，RAM、存储、屏幕（分辨率 / 密度 / 当前刷新率）、电池（电量 / 温度 / 健康 / 状态 / 技术 / 充电功率）。
-
-### 运行日志
-
-- `/data/adb/nanhe_ovo/log.txt`，一行一条：时间 / 级别（info、warn、error）/ 标签 / 正文，最多 200 行。
-- 自动记录：命令失败原文、刷新率档位表或当前值读不到、本次开机没有基线、`uperf.json` 缺失、应用枚举报错、开机应用刷新率的每一步、页面自身发现的问题。
-- 同一开机内同类诊断只记一次（按 boot_id 去重）；「清空日志」会连去重标记一起清掉。
-- **只写本机，不上传。**
-
-### 更新通道（v1.9.0）
-
-- 版本更新由 KernelSU / APatch 等管理器的模块仓库统一推送：`module.prop` 内的 `updateJson` 指向仓库根目录的 `update.json`（版本、versionCode、模块包地址、更新日志），管理器在模块页检测到新版本后提示安装；面板内不再联网检查、下载更新包。
-- 仓库根目录另附 `module.yaml`，供模块注册表（Registry）收录；Release 资产只保留一个模块 zip，源码包不参与注册表匹配。
-- 进入 modules.kernelsu.org 在线目录的一次性门户操作：登录 KernelSU Developer Portal，为仓库安装只读的 KernelSU Modules App（仅选本仓库），预检通过后提交收录审核。审核通过后，之后每个 versionCode 更高的 immutable Release 都会自动被目录收录，无需再走面板内更新。
-- APatch 没有独立公共模块目录，沿用同一 `updateJson` 通道，由管理器按 versionCode 比对并在模块页提示更新。
-
-### Root 形态与 SUSFS
-
-- 首页状态卡标签自动显示 `LKM` / `GKI` / `APatch` / `Magisk`：KernelSU 看 `/sys/module/kernelsu` 是否存在来区分 LKM 与内核内置（GKI）；读不到就是「未知」，不硬编码。
-- v1.6.0 起不再输出 `info susfs`、不在 UI 展示或写 SUSFS 告警；兼容探测函数保留但不调用。
-- 本模块**不加载、不卸载任何内核模块**，也不写 `kallsyms`、`kptr_restrict`、`/proc/susfs_*`。
-
-### 界面
-
-- 浅灰底 + 纯白 28px 圆角卡；首屏左右分栏（左侧绿色「工作中」状态卡 + Root 形态标签，右侧两枚统计卡），下面竖排「标签 / 值」的运行状态。
-- 状态由后端驱动：`uperf` 在跑才显示「工作中」，否则「待机」；桥接不可用显示「只读演示」，不做假成功。
-- 底栏是唯一保留玻璃的区域：悬浮胶囊 `blur(22px) saturate(240%)`，上下 16px 折射带、左右 2px 红 / 青色散；镜片随页面滑动，滚动时底栏倾斜 / 拉伸并在停下后弹簧回位。
-
-## 截图
-
-| 首页 | 频率与显示 |
-| --- | --- |
-| ![首页](docs/screenshots/ui-overview.png) | ![频率](docs/screenshots/ui-frequency.png) |
-
-| 应用 | 关于 |
-| --- | --- |
-| ![应用](docs/screenshots/ui-apps.png) | ![关于](docs/screenshots/ui-about.png) |
-
-深色模式：![深色](docs/screenshots/ui-dark.png)
+完整说明见 [`module/README.md`](module/README.md)，版本记录见 [`docs/CHANGELOG.md`](docs/CHANGELOG.md)，短公告见 [`docs/更新公告-v1.11.0.md`](docs/更新公告-v1.11.0.md)。
 
 ## 安装
 
-1. 确认设备为 **arm64**（非 arm64 会在安装器里被拒绝）。
-2. 管理器刷入 `nanhe_ovo-v1.8.0-20261119.zip`：Magisk → 模块 → 从本地安装；KernelSU / APatch → 模块 → 安装。
-3. 重启。
-4. 打开面板：KernelSU / APatch 管理器 → 模块 → 南何ovo → 打开 WebUI；Magisk 本体没有模块 WebUI，可用 KsuWebUIStandalone 等工具打开 `/data/adb/modules/nanhe_ovo/webroot/index.html`。
+1. 在管理器里刷入 `dist/nanhe_ovo-v1.11.0-20261125.zip`。
+2. 重启。
+3. KernelSU / APatch → 模块 → 南何ovo → 打开 WebUI；Magisk 可用 KsuWebUIStandalone 打开 `/data/adb/modules/nanhe_ovo/webroot/index.html`。
 
-升级会保留 `uperf.json.bak`；卸载会还原 `peak_refresh_rate` / `min_refresh_rate` 并删除 `/data/adb/nanhe_ovo`（含日志）。
+升级用户会备份旧 `uperf.json`，并迁移旧版分应用规则；首次进入建议查看总览页的 CPU 策略接管状态与运行日志。
 
-## 构建
-
-```powershell
-python tools\build.py
-```
-
-产物：
-
-- `dist/nanhe_ovo-v1.8.0-20261119.zip` —— 可刷入模块
-- `dist/nanhe_ovo-src-v1.8.0.zip` —— 源码包
-
-构建校验：脚本 LF 换行、无 BOM、`#!/system/bin/sh` 首行、zip 内脚本 755、`module.prop` 必填字段；文本写入 zip 时统一转 LF。
-
-## 目录
+## 仓库结构
 
 ```
-module/       模块内容（即模块 zip 的内容）
-tests/        Node 单测、CDP 渲染自检、mock 桥接、POSIX 后端与安装器验证
-tools/        build.py（打包与校验）
-docs/         截图与介绍词
-dist/         构建产物（不入库，见 Releases）
+module/                模块本体（打包内容）
+├── cpu_profiles.tsv   构建期生成的每簇上限表
+├── config/*.json      111 份 SoC 功耗模型与预设
+├── script/            cpu_policy / control / game_watch / thermal_guard 等
+├── appopt/            AppOptR 规则与 GPL-3.0 许可证
+├── webroot/           Miuix WebUI
+└── README.md          模块使用与边界说明
+tools/                 构建、配置生成与校验脚本
+tests/                 shell / core / 渲染回归
+docs/                  更新日志与公告
+dist/                  构建产物（本地生成，不随源码提交）
 ```
 
-## 测试
-
-后端（Ubuntu 22.04，bash + dash）：
+## 构建与测试
 
 ```sh
-bash tests/shell/run-tests.sh     # 全部通过（含 GPU / 刷新率总开关 / 8 Elite 断言）
+python3 tools/gen_cpu_profiles.py
+bash tests/shell/run-tests.sh
+node tests/core.test.cjs
+python3 tools/build.py
 ```
 
-前端（Windows，Node 22 + 无头 Edge + CDP）：
+`tools/build.py` 会在打包前重生成 CPU 表，并校验：表存在且模式完整、每份有 `powerModel` 的配置都有对应行、模块内不再含 `bin/uperf` 或 `libuperf.sh`、zip 包含 `cpu_policy.sh` 与 `cpu_profiles.tsv`。
 
-```powershell
-node tests\core.test.cjs         # 命令构造 / 拒绝 / 解析 / 换算 / 桥接
-node tests\render.cjs            # 60 项断言 + 截图
-```
+## 边界
 
-## 边界（写清楚，免得误会）
-
-1. 不是超频 / 降压 / 改电压工具，只写设备已暴露的频率与刷新率参数；GPU 只抬下限、不突破出厂 OPP。
-2. 频率区间不持久化；刷新率仅在「刷新率管理」开启时由开机脚本应用，关闭则完全交还系统。
-3. 液态玻璃是 CSS 近似（模糊 + 饱和度 + 边缘色散 + 高光），做不到 Backdrop `lens()` 的逐像素折射。
-4. LKM / GKI 判断依据 `/sys/module/kernelsu` 是否存在，属启发式；页面同时显示完整值供比对。
-5. APatch / Magisk 只按 `/data/adb/ap`、`/data/adb/magisk` 目录识别，不解析版本号。
-6. 日志最多 200 行、只在本机；面板不联网、不上传设备数据，更新提示走管理器模块仓库通道。
-7. 线程引擎只做静态放置（cpuset 分组），不改频率与优先级；规则在生成前已展开为数字掩码，不会把空 cpuset 写进基础分组；引擎起不来只影响线程调度，不影响 uperf。
-8. 未在全部机型验证；当前为 Android 17 / MT8799 真机对照 + Ubuntu 容器后端测试 + Windows 无头 Edge 渲染测试。
-
-## 致谢与出处
-
-完整的引用说明见 [docs/模块介绍.md](docs/模块介绍.md)。
-
-| 引用内容 | 仓库 / 出处 | 许可证 | 用法 |
-| --- | --- | --- | --- |
-| 调度引擎、平台配置、开机脚本、`system/vendor` 覆盖 | [yinwanxi/Uperf-Game-Turbo](https://github.com/yinwanxi/Uperf-Game-Turbo)（Matt Yang / 吟惋兮） | Apache-2.0 | 模块核心调度，`LICENSE` / `NOTICE` 原样保留 |
-| 线程调度引擎（AppOpt / AppOpt-ebpf 二进制） | [sutoliu/AppOptR](https://gitee.com/sutoliu/AppOptR)（SutoLiu） | GPL-3.0 | 线程引擎，规则在本模块内二次封装，许可证全文随包分发（`appopt/LICENSE-GPL3.txt`），`NOTICE` 已声明 |
-| 底栏液态玻璃视觉要素 | [Kyant0/AndroidLiquidGlass](https://github.com/Kyant0/AndroidLiquidGlass) | Apache-2.0 | 仅参考参数，CSS 近似，未打包其代码 |
-| 玻璃组件文档（Bottom Bar / lens / vibrancy 参数） | [kyant.gitbook.io/backdrop](https://kyant.gitbook.io/backdrop) | 文档 | 参数与组合方式参考 |
-| LKM / GKI 形态与 `/data/adb/ksu`、`ksud` 约定 | [tiann/KernelSU](https://github.com/tiann/KernelSU) | Apache-2.0 | 仅用于理解 Root 形态，未打包代码 |
-| 首页状态卡、统计卡、胶囊导航观感 | [SukiSU-Ultra/SukiSU-Ultra](https://github.com/SukiSU-Ultra/SukiSU-Ultra) | GPL-3.0（仅观感） | 版式灵感，不含其代码 |
-| Miuix 设计语言（浅灰底 + 白圆角卡） | [compose-miuix-ui/miuix](https://github.com/compose-miuix-ui/miuix) | Apache-2.0 | 仅观感参考，未打包代码，非官方关联 |
-| Magisk 模块规范 | [topjohnwu/Magisk](https://github.com/topjohnwu/Magisk) | GPL-3.0 | 刷入与模块目录依据 |
-| APatch 模块规范 | [bmax121/APatch](https://github.com/bmax121/APatch) | GPL-2.0 | 同上 |
-| Magisk 下打开模块 WebUI | [5ec1cff/KsuWebUIStandalone](https://github.com/5ec1cff/KsuWebUIStandalone) | GPL-3.0 | 安装说明中推荐，未打包 |
-| SUSFS Guard (LKM) 的加载流程与错误码 | [inforcqb/susfs4ksu-for-lkm](https://github.com/inforcqb/susfs4ksu-for-lkm) | 见其仓库 | 仅用于理解 `rc=61`（`ENODATA`）与排查路径，不接管 |
-| 模块外壳、WebUI、日志、刷新率与频率控制 | 本项目 | Apache-2.0 | 纯本地实现 |
+- 只使用标准 `cpufreq` 节点；厂商 PPM / 私有温控仍可能覆盖，写失败会记录到 `cpu_policy.log`，不会伪造成功。
+- `template` 无功耗模型时使用硬件峰值 60%–100% 的通用上限，效果不等同于专有配置。
+- 手动频率写入可能被下一次模式切换覆盖；需要稳定值请结合模式选择。
+- 不关闭温控，不保证所有 GPU / DDR 节点可写。
+- 三角洲约 92 秒一次的卡顿已从调度链路与旧规则迁移两方面修复，但仍需真机 `game_watch.log` / `thermal_guard.log` / `logcat` 区分 ACE 扫描、后台任务与热控切换。
 
 ## 许可
 
-Apache License 2.0，见 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)。二次分发请保留原始声明。
+- 本项目代码：Apache-2.0，见 `LICENSE`。
+- Uperf-Game-Turbo 的配置数据与启动脚本骨架：Apache-2.0，声明见 `NOTICE`；当前包不再包含 uperf 可执行文件。
+- AppOptR：GPL-3.0，见 `module/appopt/LICENSE-GPL3.txt`。
+- busybox：GPL-2.0，声明见 `NOTICE`。
+
+本项目为独立实现，与 Miuix、Xiaomi 无隶属或官方关系。

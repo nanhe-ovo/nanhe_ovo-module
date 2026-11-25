@@ -2,7 +2,8 @@
 # Per-app dynamic power mode rule
 # '-' means offscreen rule
 # '*' means default rule
-# v1.10.0：游戏显式 fast，默认改为 balance；避免未配置的应用也走 performance 把整机预热。
+# v1.11.0：游戏显式 fast，默认改为 balance；避免未配置的应用也走 performance 把整机预热。
+# v1.12.0：三角洲（含 CE）改为 crazy，按性能优先单独放开；其余游戏保持 fast。
 
 com.tencent.tmgp.sgame fast
 com.tencent.lolm fast
@@ -10,8 +11,8 @@ com.tencent.tmgp.pubgmhd fast
 com.tencent.tmgp.cf fast
 com.tencent.mf.uam fast
 com.tencent.tmgp.cod fast
-com.tencent.tmgp.dfm fast
-com.tencent.tmgp.dfm.ce fast
+com.tencent.tmgp.dfm crazy
+com.tencent.tmgp.dfm.ce crazy
 com.tencent.tmgp.speedmobile fast
 com.tencent.KiHan fast
 com.tencent.jkchess fast

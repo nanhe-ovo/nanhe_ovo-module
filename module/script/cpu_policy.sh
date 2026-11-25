@@ -4,7 +4,7 @@
 #
 # 设计边界：
 # - JSON 仍是唯一配置源；本脚本只消费 tools/gen_cpu_profiles.py 生成的表。
-# - 不修改 governor，不写厂商私有 PPM；标准 cpufreq 节点写失败就记日志跳过。
+# - 不修改 governor；标准 cpufreq 节点优先，被拒绝时按 boost_ppm 记录走 MTK 用户上限兜底。
 # - 模式上限是「上限」，不是常开频率；低负载仍由 schedutil / 厂商 DVFS 下调。
 # - crazy 档的 max_khz=0 表示运行期取 cpuinfo_max_freq，不把 999 写进节点。
 
@@ -16,6 +16,11 @@ TABLE=$MODDIR/cpu_profiles.tsv
 MODE_FILE=$USER_PATH/cur_powermode.txt
 LOGFILE=$RUNTIME/cpu_policy.log
 BASEFILE=$RUNTIME/cpu_policy_base.tsv
+LOCKDIR=$RUNTIME/.cpu_policy.lock
+MODE_STAMP=$RUNTIME/cpu_policy_mode
+PPM_MAX=/proc/ppm/policy/hard_userlimit_max_cpu_freq
+CPUFREQ_LIMITS=/proc/cpufreq/cpufreq_limits
+PPM_STATE=$RUNTIME/boost_ppm
 TAB=$(printf '\t')
 
 cp_log() {
@@ -25,6 +30,62 @@ cp_log() {
         tail -n 200 "$LOGFILE" > "$LOGFILE.tmp" 2>/dev/null && cat "$LOGFILE.tmp" > "$LOGFILE" 2>/dev/null
         rm -f "$LOGFILE.tmp"
     fi
+}
+
+# game_watch 与 WebUI 可能同时切模式；用 mkdir 原子锁避免两个实例
+# 用不同模式的目标值互相覆盖，造成 CPU7 偶发写失败或目标值错乱。
+lock_acquire() {
+    LOCK_TRY=0
+    while [ "$LOCK_TRY" -lt 30 ]; do
+        if mkdir "$LOCKDIR" 2>/dev/null; then
+            printf '%s\n' "$$" > "$LOCKDIR/pid" 2>/dev/null || :
+            return 0
+        fi
+        OLD_PID=$(cat "$LOCKDIR/pid" 2>/dev/null)
+        case "$OLD_PID" in
+            ''|*[!0-9]*) ;;
+            *) kill -0 "$OLD_PID" 2>/dev/null || { rm -rf "$LOCKDIR"; continue; } ;;
+        esac
+        LOCK_TRY=$((LOCK_TRY + 1))
+        sleep 1
+    done
+    return 1
+}
+
+lock_release() {
+    rm -rf "$LOCKDIR" 2>/dev/null || :
+}
+
+# MTK 用户上限：标准 scaling_max_freq 被厂商 PPM/只读节点拒绝时兜底。
+# 与 control.sh 共用 boost_ppm 记录，切模式前先释放自己写过的 cluster，
+# 避免旧的 PPM 上限把新模式更高频率又压回去。
+ppm_clear() {
+    [ -f "$PPM_STATE" ] || return 0
+    while read -r PC; do
+        case "$PC" in ''|*[!0-9]*) continue;; esac
+        for PN in "$PPM_MAX" "$CPUFREQ_LIMITS"; do
+            [ -e "$PN" ] || continue
+            chmod 0666 "$PN" 2>/dev/null || :
+            printf '%s 0\n' "$PC" > "$PN" 2>/dev/null || :
+        done
+    done < "$PPM_STATE"
+    rm -f "$PPM_STATE" 2>/dev/null || :
+    return 0
+}
+
+ppm_write() { # $1=cluster  $2=目标 kHz  $3=policy 路径
+    PW_CL=$1 PW_T=$2 PW_P=$3
+    for PN in "$PPM_MAX" "$CPUFREQ_LIMITS"; do
+        [ -e "$PN" ] || continue
+        chmod 0666 "$PN" 2>/dev/null || :
+        printf '%s %s\n' "$PW_CL" "$PW_T" > "$PN" 2>/dev/null || continue
+        RV=$(cat "$PW_P/scaling_max_freq" 2>/dev/null)
+        [ "$RV" = "$PW_T" ] || continue
+        mkdir -p "$RUNTIME" 2>/dev/null || :
+        printf '%s\n' "$PW_CL" >> "$PPM_STATE" 2>/dev/null || :
+        return 0
+    done
+    return 1
 }
 
 valid_mode() {
@@ -76,6 +137,9 @@ find_policy() { # $1=簇首核
 
 write_node() { # $1=节点  $2=值
     [ -e "$1" ] || return 1
+    # 部分 MTK 节点的默认权限只允许厂商 thermal 写；这里和 thermal_guard
+    # 一样先尝试 chmod，避免 CPU7 上限偶发写失败后掉回厂商默认档。
+    chmod 0666 "$1" 2>/dev/null || :
     printf '%s\n' "$2" > "$1" 2>/dev/null || return 1
     RV=$(cat "$1" 2>/dev/null)
     [ "$RV" = "$2" ]
@@ -103,8 +167,10 @@ apply_uclamp() { # $1=mode
     esac
     for D in /dev/cpuctl/top-app /dev/cpuctl/foreground; do
         [ -e "$D/cpu.uclamp.min" ] || continue
-        write_node "$D/cpu.uclamp.min" "$UV" 2>/dev/null || cp_log "uclamp 写入失败：$D（模式 $1）"
-        return 0
+        if write_node "$D/cpu.uclamp.min" "$UV"; then
+            return 0
+        fi
+        cp_log "uclamp 写入失败：$D（模式 $1）"
     done
     return 0
 }
@@ -139,8 +205,16 @@ apply_from_table() { # $1=soC  $2=mode
         if write_node "$POLICY/scaling_max_freq" "$MAX"; then
             AS_OK=$((AS_OK + 1))
         else
-            AS_FAIL=$((AS_FAIL + 1))
-            cp_log "簇 $CL 写上限失败：目标 ${MAX}kHz（节点可能只读或被厂商 PPM 接管）"
+            # 标准节点拒绝时走 MTK 用户上限；写完仍以 policy 回读为准。
+            if ppm_write "$CL" "$MAX" "$POLICY"; then
+                AS_OK=$((AS_OK + 1))
+                cp_log "簇 $CL 标准节点拒绝，已走 MTK PPM：目标 ${TARGET}kHz，实际 ${MAX}kHz"
+            else
+                AS_FAIL=$((AS_FAIL + 1))
+                HW=$(cat "$POLICY/cpuinfo_max_freq" 2>/dev/null)
+                OPP_MAX=$(tr -s ' \t\r\n' '\n' < "$POLICY/scaling_available_frequencies" 2>/dev/null | awk '$1 ~ /^[0-9]+/ { if ($1 > m) m = $1 } END { print m }')
+                cp_log "簇 $CL 写上限失败：目标 ${TARGET}kHz，候选 ${MAX}kHz，硬件峰值 ${HW}kHz，可用表最高 ${OPP_MAX:-未知}kHz，policy ${POLICY}（标准节点与 MTK PPM 均被拒绝）"
+            fi
         fi
     done < "$RUNTIME/.cpu_policy_rows"
     rm -f "$RUNTIME/.cpu_policy_rows" 2>/dev/null || :
@@ -154,9 +228,11 @@ apply_generic() { # $1=mode
     case "$1" in
         powersave) PCT=60;; balance) PCT=80;; performance) PCT=94;; fast) PCT=94;; crazy) PCT=100;; *) PCT=100;;
     esac
-    AG_OK=0 AG_FAIL=0
+    AG_OK=0 AG_FAIL=0 AG_IDX=0
     for P in "$SYSFS"/devices/system/cpu/cpufreq/policy*; do
         [ -d "$P" ] || continue
+        AG_PPM_IDX=$AG_IDX
+        AG_IDX=$((AG_IDX + 1))
         HW=$(cat "$P/cpuinfo_max_freq" 2>/dev/null)
         case "$HW" in ''|*[!0-9]*) continue;; esac
         TARGET=$((HW * PCT / 100))
@@ -165,6 +241,8 @@ apply_generic() { # $1=mode
         case "$CMIN" in ''|*[!0-9]*) CMIN=0;; esac
         [ "$CMIN" -gt "$MAX" ] 2>/dev/null && write_node "$P/scaling_min_freq" "$MAX" 2>/dev/null || :
         if write_node "$P/scaling_max_freq" "$MAX"; then
+            AG_OK=$((AG_OK + 1))
+        elif ppm_write "$AG_PPM_IDX" "$MAX" "$P"; then
             AG_OK=$((AG_OK + 1))
         else
             AG_FAIL=$((AG_FAIL + 1))
@@ -178,18 +256,31 @@ do_apply() { # $1=mode
     A_MODE=$1
     valid_mode "$A_MODE" || { echo "invalid mode: $A_MODE" >&2; return 1; }
     mkdir -p "$RUNTIME" 2>/dev/null
+    lock_acquire || { cp_log "另一个 CPU 策略实例正在运行，跳过模式 $A_MODE"; return 1; }
+    trap 'lock_release' 0 1 2 15
+    # 先释放本层上一轮写过的 PPM 上限，再读开机基线；否则旧上限会
+    # 让 snapshot_base 记到低值，后续模式切换也无法把频率拉回。
+    ppm_clear || :
     snapshot_base || :
     SOC=$(read_soc)
     if [ -f "$TABLE" ] && apply_from_table "$SOC" "$A_MODE"; then
         apply_uclamp "$A_MODE"
+        printf '%s\n' "$A_MODE" > "$MODE_STAMP.tmp" 2>/dev/null && mv -f "$MODE_STAMP.tmp" "$MODE_STAMP" 2>/dev/null || :
         printf 'ok\tpolicy\t%s\t%s\n' "$A_MODE" "$SOC"
+        lock_release
+        trap - 0 1 2 15
         return 0
     fi
     if apply_generic "$A_MODE"; then
         apply_uclamp "$A_MODE"
+        printf '%s\n' "$A_MODE" > "$MODE_STAMP.tmp" 2>/dev/null && mv -f "$MODE_STAMP.tmp" "$MODE_STAMP" 2>/dev/null || :
         printf 'ok\tpolicy\t%s\t%s\tgeneric\n' "$A_MODE" "$SOC"
+        lock_release
+        trap - 0 1 2 15
         return 0
     fi
+    lock_release
+    trap - 0 1 2 15
     cp_log "模式 $A_MODE 应用失败：没有可写的 cpufreq 节点"
     return 1
 }

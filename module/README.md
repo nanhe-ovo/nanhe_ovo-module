@@ -1,32 +1,32 @@
 # 南何ovo
 
-Magisk / KernelSU / APatch 通用的性能调度模块：**自研表驱动 CPU 策略 + AppOptR 线程调度 + Miuix 观感 WebUI**。v1.11.0 起不再内置或启动 uperf 二进制，CPU 配置继续保留在 JSON 中，构建时生成每簇频率上限表，运行期由 `cpu_policy.sh` 直接写标准 cpufreq 节点。
+Magisk / KernelSU / APatch 通用的性能调度模块：**自研表驱动 CPU 策略 + AppOptR 线程调度 + Miuix 观感 WebUI**。v1.11.0 起不再内置或启动 uperf 二进制，CPU 配置继续保留在 JSON 中，构建时生成每簇频率上限表，运行期由 `cpu_policy.sh` 优先写标准 cpufreq 节点，失败时走 MTK PPM 用户上限。
 
 - 模块 ID：`nanhe_ovo`
-- 版本：`v1.11.1`（versionCode `202611258`）
+- 版本：`v1.12.0`（versionCode `202611259`）
 - CPU 策略：`script/cpu_policy.sh` + `cpu_profiles.tsv`
 - 线程引擎：AppOptR（GPL-3.0，SutoLiu）
 - 配置数据：Uperf-Game-Turbo 功耗模型（Apache-2.0，仅作 JSON 数据源）
 - WebUI：纯本地 HTML/CSS/JS，无远程资源，不联网
 
-> v1.11.1 修复了 v1.11.0 WebUI 的 CSS 花括号缺失；面板恢复 Miuix 卡片与悬浮实色底栏，调度逻辑不变。
+> v1.12.0 按性能优先重做温控：`fast/performance` 84/88/92/95℃、上限 90/80/70/55%，`crazy` 84/88/92/95℃、上限 95/88/78/60%；三角洲默认 crazy；CPU7 标准节点失败时自动走 MTK PPM。
 
 ## 工作方式
 
 1. 安装器按 `ro.board.platform` / `ro.product.board` / `ro.soc.model` 匹配 SoC 配置，并用真实核数、簇频率复核；伪装机型时会按拓扑指纹改选正确配置。
 2. `tools/gen_cpu_profiles.py` 读取 `module/config/*.json` 的 `powerModel` 和模式功率墙，按 \(P \propto f^2\) 折算成每簇上限，写入 `module/cpu_profiles.tsv`。`template.json` 没有功耗模型，不生成表，运行期用硬件峰值的温和比例兜底。
-3. 开机 `initsvc.sh` 先让 `control.sh status` 记录本次开机原始频率边界，再调用 `cpu_policy.sh apply <mode>`；后者按 `scaling_available_frequencies` 选不超过目标值的最高真实 OPP，写 `scaling_max_freq`，并把 `scaling_min_freq` 限制在目标以下。
-4. `game_watch.sh` 每 4 秒读一次 top-app cpuset 的 `/proc/<pid>/cmdline`，识别到 `game.list` 中的游戏才切 `fast`；退出游戏回 `balance`，灭屏切 `powersave`。只有 top-app 节点不可读时才降级为最多 20 秒一次的 `dumpsys`，不再每 2 秒跑两次 `dumpsys`。
-5. 模式切换同时更新 GPU 窗口、DDR 上限、AppOptR 线程档位；温控闸门检测到模式变化会丢弃上一模式的旧基线，避免把 `fast` 夹在 `balance` 的旧上限上。
+3. 开机 `initsvc.sh` 先让 `control.sh status` 记录本次开机原始频率边界，再调用 `cpu_policy.sh apply <mode>`；后者按 `scaling_available_frequencies` 选不超过目标值的最高真实 OPP，优先写 `scaling_max_freq`；标准节点被拒绝时走 MTK PPM / `cpufreq_limits`，并把 `scaling_min_freq` 限制在目标以下。
+4. `game_watch.sh` 每 4 秒读一次 top-app cpuset 的 `/proc/<pid>/cmdline`，识别到 `game.list` 中的游戏后按 `perapp_powermode.txt` 切模式（三角洲 `crazy`，其余默认 `fast`）；退出游戏回 `balance`，灭屏切 `powersave`。只有 top-app 节点不可读时才降级为最多 20 秒一次的 `dumpsys`，不再每 2 秒跑两次 `dumpsys`。
+5. 模式切换同时更新 GPU 窗口、DDR 上限、AppOptR 线程档位；温控闸门检测到模式变化会丢弃上一模式的旧基线，启动时重新应用当前模式，避免把 `fast` 夹在旧上限上。
 
 `/sdcard/Android/yc/uperf/uperf.json` 和 `perapp_powermode.txt` 路径保留，目的是兼容已有配置与用户规则；它们现在只是配置数据，不再驱动 uperf 进程。
 
 ## 安装
 
 1. 设备需要 **arm64**（模块内 busybox 与 AppOptR 为 aarch64）。
-2. 管理器刷入 `nanhe_ovo-v1.11.1-20261125.zip`。
+2. 管理器刷入 `nanhe_ovo-v1.12.0-20261125.zip`。
 3. 重启后打开 WebUI：KernelSU / APatch → 模块 → 南何ovo → 打开 WebUI；Magisk 可用 KsuWebUIStandalone 打开 `/data/adb/modules/nanhe_ovo/webroot/index.html`。
-4. 升级用户会备份旧 `uperf.json`，并迁移旧版分应用规则：新模板为 48 款游戏 `fast`、`- powersave`、`* balance`，旧模板的 `* performance` 会被替换，自定义包名保留。
+4. 升级用户会备份旧 `uperf.json`，并迁移旧版分应用规则：新模板为 46 款游戏 `fast`、三角洲与 CE `crazy`、`- powersave`、`* balance`，旧模板的 `* performance` 与 DFM `fast` 会被替换，自定义包名保留。
 
 ## 面板能力
 
@@ -42,10 +42,10 @@ Magisk / KernelSU / APatch 通用的性能调度模块：**自研表驱动 CPU �
 ## CPU 策略与游戏帧率
 
 - 不再依赖 `uperf` 的 inotify 决策；模式切换由 `control.sh` / `game_watch.sh` 显式调用 `cpu_policy.sh`。
-- 三角洲行动等 `game.list` 游戏默认 `fast`；v1.10 旧模板的 `* performance` 会在升级时迁移掉，避免游戏被旧的 6W 预算覆盖。
+- `game.list` 游戏默认 `fast`；三角洲行动与 CE 单独使用 `crazy`，v1.10 旧模板的 `* performance` 与旧 DFM `fast` 会在升级时迁移掉。
 - 前台识别从每 2 秒两次 `dumpsys` 改为 top-app cpuset 扫描，降低轮询开销与小卡顿。
-- 温控仍按温度分档限频，但模式切换时重置旧基线；不会为了提高帧率关闭温控。
-- 帧率记录里的约 92 秒周期卡顿不能只靠调度解释，仍需 `game_watch.log`、`thermal_guard.log`、`logcat` 继续区分 ACE 扫描、系统后台任务与热控档位切换。
+- 温控仍按温度分档限频，但 `fast/performance` 的起始温度延后到 84℃，`crazy` 使用更宽的 95/88/78/60% 曲线；模式切换和启动时丢弃旧基线，不会为了提高帧率关闭温控。
+- v1.12 依据 K Pad 35m36s 记录调整：原日志中 94% 游戏时间被压在温控 2/3 档；仍需 `game_watch.log`、`thermal_guard.log`、`cpu_policy.log` 复核新曲线与 CPU7 写入。
 
 ## 命令行
 

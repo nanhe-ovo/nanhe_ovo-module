@@ -149,15 +149,15 @@ fi
 cp -f "$SRC" "$USER_PATH/uperf.json" || abort "! 写入 ${USER_PATH}/uperf.json 失败"
 
 # 分应用规则迁移：旧模板是 14 款 performance + "* performance"，
-# v1.10 新模板是 48 款 fast + "- powersave" + "* balance"。
+# 新模板是 48 款 fast + 三角洲 crazy + "- powersave" + "* balance"。
 # 直接按“文件存在就跳过”会让升级用户继续落到旧默认规则，三角洲尤其明显。
 merge_perapp() {
     OLD_RULES="$USER_PATH/perapp_powermode.txt"
     NEW_RULES="$MODPATH/config/perapp_powermode.txt"
     [ -f "$OLD_RULES" ] && [ ! -L "$OLD_RULES" ] || return 0
     [ -f "$NEW_RULES" ] || return 0
-    # 已经是新模板（含 DFM 且默认 balance）就不动用户文件
-    if grep -q '^com\.tencent\.tmgp\.dfm' "$OLD_RULES" 2>/dev/null &&
+    # 已经是新模板（含三角洲 crazy 且默认 balance）就不动用户文件
+    if grep -q '^com\.tencent\.tmgp\.dfm[[:space:]]\+crazy' "$OLD_RULES" 2>/dev/null &&
        grep -q '^[[:space:]]*\*[[:space:]]*balance' "$OLD_RULES" 2>/dev/null; then
         return 0
     fi
@@ -179,7 +179,7 @@ merge_perapp() {
     ' "$NEW_RULES" "$OLD_RULES" > "$USER_PATH/.perapp.merge" || return 0
     mv -f "$USER_PATH/.perapp.merge" "$OLD_RULES" 2>/dev/null || :
     chmod 0644 "$OLD_RULES" 2>/dev/null || :
-    note "已迁移旧版分应用规则（保留自定义包，默认规则更新为 fast/balance）"
+    note "已迁移旧版分应用规则（保留自定义包，默认规则更新为 fast/crazy/balance）"
 }
 merge_perapp
 if [ ! -f "$USER_PATH/perapp_powermode.txt" ]; then

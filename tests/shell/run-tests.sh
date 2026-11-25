@@ -698,7 +698,7 @@ mkdir -p "$INST/sdcard/Android/yc/uperf"
 printf '%s\n' 'com.tencent.tmgp.sgame performance' '- powersave' '* performance' 'com.example.custom fast' > "$INST/sdcard/Android/yc/uperf/perapp_powermode.txt"
 run_install
 has "旧模板默认规则已迁移为 balance" "$(cat "$INST/sdcard/Android/yc/uperf/perapp_powermode.txt")" '* balance'
-has "迁移后含三角洲 fast" "$(cat "$INST/sdcard/Android/yc/uperf/perapp_powermode.txt")" 'com.tencent.tmgp.dfm fast'
+has "迁移后含三角洲 crazy" "$(cat "$INST/sdcard/Android/yc/uperf/perapp_powermode.txt")" 'com.tencent.tmgp.dfm crazy'
 has "自定义包规则保留" "$(cat "$INST/sdcard/Android/yc/uperf/perapp_powermode.txt")" 'com.example.custom fast'
 has "旧规则已备份" "yes" "$([ -f "$INST/sdcard/Android/yc/uperf/perapp_powermode.txt.bak" ] && echo yes || echo no)"
 
@@ -891,6 +891,17 @@ done
 has "service.sh 拉起线程服务" "$(cat "$MODULE/service.sh")" "thread_svc.sh"
 has "service.sh 拉起前台动态调度" "$(cat "$MODULE/service.sh")" "game_watch.sh"
 has "service.sh 拉起温控闸门" "$(cat "$MODULE/service.sh")" "thermal_guard.sh"
+has "性能优先温控起始 84℃" "$(cat "$MODULE/script/thermal_guard.sh")" '[ "$T" -ge 84 ]'
+has "性能优先温控最高档 95℃" "$(cat "$MODULE/script/thermal_guard.sh")" '[ "$T" -ge 95 ]'
+has "Crazy 首档 95%" "$(cat "$MODULE/script/thermal_guard.sh")" '1) echo 95'
+has "温控上限只降不升" "$(cat "$MODULE/script/thermal_guard.sh")" '[ "$TARGET" -gt "$BASE" ]'
+has "温控排除 GPU 热区" "$(cat "$MODULE/script/thermal_guard.sh")" '*gpu*|*GPU*) continue'
+has "温控启动丢弃旧基线" "$(cat "$MODULE/script/thermal_guard.sh")" 'rm -f "$BASEFILE"'
+has "CPU 策略写节点前 chmod" "$(cat "$MODULE/script/cpu_policy.sh")" 'chmod 0666'
+has "CPU 策略并发锁" "$(cat "$MODULE/script/cpu_policy.sh")" 'lock_acquire'
+has "CPU 策略 PPM 兜底" "$(cat "$MODULE/script/cpu_policy.sh")" 'ppm_write'
+has "CPU 策略 PPM 释放" "$(cat "$MODULE/script/cpu_policy.sh")" 'ppm_clear'
+has "三角洲默认 Crazy" "$(cat "$MODULE/config/perapp_powermode.txt")" 'com.tencent.tmgp.dfm crazy'
 has "ACE 跳过名单随包分发" "$(cat "$MODULE/thread_skip.list")" "com.tencent.tmgp.dfm"
 has "uninstall.sh 清理线程引擎" "$(cat "$MODULE/uninstall.sh")" "/dev/cpuset/nanhe_opt"
 has "NOTICE 标注 AppOptR 出处" "$(cat "$MODULE/NOTICE")" "gitee.com/sutoliu/AppOptR"

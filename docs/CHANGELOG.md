@@ -1,5 +1,21 @@
 # 更新日志
 
+## v1.12.0（2026-11-25）
+
+按 REDMI K Pad / 天玑 9400 / OS4.0.3.XAOCNXM 的 35m36s《三角洲行动》真机记录做性能优先修正。记录本身平均 132.6 FPS，但 1% Low 44.6、5% Low 70.7、Jank 550 次；`thermal_guard.log` 在游戏区间记录 43 次档位变化，档位 2 约 23.5 分钟、档位 3 约 10.1 分钟，94% 时间 CPU 被压在上限；`cpu_policy.log` 又显示 per-app 把三角洲切到 `fast`，用户选的 `crazy` 没有进游戏，CPU7 上限还偶发写失败。
+
+- **温控阈值按性能优先延后**：`fast/performance` 从 74/79/84/88℃ 改为 84/88/92/95℃，档位上限从 85/70/55/40% 改为 90/80/70/55%；`crazy` 单独使用 84/88/92/95℃ 与 95/88/78/60%。Balance/Powersave 保留原曲线。
+- **温控上限只降不升**：`apply_cap` 读取当前模式基线 `BASE`，目标改为 `min(硬件峰值×档位百分比, BASE)`；`fast` 的 1/2 档不再把 `cpu_policy` 已压好的上限反向抬高。
+- **模式切换与启动基线**：模式变化时删除旧 `thermal_base`、重置档位并留 1 个 tick 给 `cpu_policy`；`thermal_guard start` 不再恢复上次遗留基线，改为丢弃并重新应用当前模式，避免覆盖刚写入的上限。
+- **CPU 热区选择**：温控只看 CPU/SoC 热区，GPU 热区由 `gpu_profile` 与厂商 GPU 热控处理，避免 GPU 80℃ 就把 CPU 大核一起压下去。
+- **CPU7 写入兜底**：`cpu_policy.sh` 写标准节点前 `chmod 0666`；标准节点被拒后自动尝试 `/proc/ppm/policy/hard_userlimit_max_cpu_freq` 与 `/proc/cpufreq/cpufreq_limits`，用 `boost_ppm` 记录并在下一次模式应用前释放；加入 mkdir 原子锁，串行化 `game_watch` / WebUI 的模式应用。
+- **三角洲默认 crazy**：`com.tencent.tmgp.dfm` 与 `com.tencent.tmgp.dfm.ce` 从 `fast` 改为 `crazy`；`customize.sh` 的迁移条件同步改为“DFM crazy + 默认 balance”，旧 DFM fast 升级时自动更新，自定义包保留。
+- **全量配置核对**：111 份 `module/config/*.json` 逐份解析，五预设均完整；50 条 per-app 规则全量读取。改动集中在全局温控/CPU 策略与三角洲规则，不逐份硬改各 SoC 的功耗墙。
+- **回归**：`tests/shell/run-tests.sh` 迁移断言改为 DFM crazy，新增性能优先起始 84℃、最高档 95℃、Crazy 首档 95%、温控只降不升、排除 GPU 热区、启动丢弃旧基线、CPU 策略 PPM 兜底/释放等静态检查。
+- **版本**：`v1.12.0` / `202611259`。
+
+> 这版是性能优先取舍：起始温度更高、档位幅度更缓，长时间游戏温度会更高；硬件 LMH 仍保留。CPU7 的 `798000kHz` 异常需要刷入后复测 `cpu_policy.log` 中的目标/候选/硬件峰值/policy 才能确定是 OPP 读取还是 PPM 覆盖。
+
 ## v1.11.1（2026-11-25）
 
 v1.11.0 的 WebUI 在 Android WebView 中整页无样式：`style.css` 的深色主题变量块少了闭合花括号，解析器把后面的卡片、状态卡和底栏规则全部吞掉，页面只剩裸 HTML 与默认尺寸的 SVG 弧线。本版只修 UI 与回归测试，不改调度逻辑。

@@ -11,7 +11,7 @@
 - **全 SOC 功率墙归一**：111 份配置的 `performance/fast` 全部改为有限值，按 `modules.cpu.powerModel` 的 `nr*typicalPower` 峰值分 2.0/4.0 到 7.5/13.0 W 七档，`fastLimitCapacity` 从 360 压到 16–48；补齐 7 份缺 `cpu.*LimitPower` 的配置。`tools/build.py` 门禁禁止 `999`、`fastLimitCapacity > 60`、`ddrMin > 5.5GB/s`。
 - **骁龙 GPU 窗口**：`gpu_profile.sh` 新增 kgsl 分支，按模式设置 `devfreq` 上下限与 `min/default_pwrlevel`；`platform_special.sh` 不再把 `min_pwrlevel` 钉到最低档、不再把 `throttling` 写成 0，恢复 `throttling=1`，避免 GPU 长期低频或热控完全失效。
 - **DDR 上限**：新增 `ddr_profile.sh`，按模式把 MTK `bus_dcvs` 与通用 devfreq 的 DDR/总线 `max_freq` 压到硬件峰值的 45%–90%（fast 82%、balance 65%），不再长期 100%。
-- **平滑温控**：新增 `thermal_guard.sh`，按 70/75/80/85°C 分档、3°C 回差、5 秒一 tick，升温每次最多降一档（约 15%），降温连续 3 tick 才回升；在硬件 LMH 硬夹之前先压住尖峰，避免“温度一上来直接掉一大截”。
+- **平滑温控**：新增 `thermal_guard.sh`，按模式分档（powersave 66/70/75/80、balance 70/75/80/85、fast/performance/crazy 74/79/84/88°C），3°C 回差、5 秒一 tick，升温每次最多降一档（约 15%），降温连续 3 tick 才回升；在硬件 LMH 硬夹之前先压住尖峰，避免“温度一上来直接掉一大截”。
 - **卸载清理**：`uninstall.sh` 先停 `game_watch` / `thermal_guard`，再停 AppOptR，避免卸载后残留进程继续写节点。
 
 > 仍需真机验证：不同厂商的 `dumpsys activity` 文本、kgsl 节点命名、MTK bus_dcvs 子目录可能有差异；脚本读不到时只跳过，不会伪造写入。三角洲闪退若仍复现，请抓 `logcat` 中 ACE 相关行与 `/data/adb/nanhe_ovo/log.txt`。

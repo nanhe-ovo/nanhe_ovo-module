@@ -2,6 +2,7 @@
 """打包 南何ovo：模块 zip（可刷入）与源码 zip。可复现：固定时间戳、排序、固定权限。"""
 import os
 import re
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
@@ -10,13 +11,13 @@ ROOT = Path(__file__).resolve().parent.parent
 MODULE = ROOT / "module"
 DIST = ROOT / "dist"
 STAMP = (2026, 11, 25, 0, 0, 0)
-VERSION = "v1.10.0"
+VERSION = "v1.11.0"
 BUILD = "20261125"
 ZIP_NAME = f"nanhe_ovo-{VERSION}-{BUILD}.zip"
 SRC_NAME = f"nanhe_ovo-src-{VERSION}.zip"
 
 TEXT_EXT = {".sh", ".prop", ".md", ".json", ".txt", ".html", ".css", ".js", ".cjs", ".py", ".xml"}
-EXEC_FILES = {"bin/uperf", "bin/busybox/busybox", "bin/appopt/AppOpt", "bin/appopt/AppOpt-ebpf", "META-INF/com/google/android/update-binary"}
+EXEC_FILES = {"bin/busybox/busybox", "bin/appopt/AppOpt", "bin/appopt/AppOpt-ebpf", "META-INF/com/google/android/update-binary"}
 
 
 def payload(path: Path) -> bytes:
@@ -127,6 +128,42 @@ def check_profiles():
     return problems
 
 
+def check_cpu_policy():
+    """CPU 策略门禁：表必须由生成器产生、覆盖全部有功耗模型的配置，且不再带 uperf 二进制。"""
+    problems = []
+    table = MODULE / "cpu_profiles.tsv"
+    if not table.is_file():
+        return ["缺少 module/cpu_profiles.tsv（运行 tools/gen_cpu_profiles.py）"]
+    lines = [l for l in table.read_text(encoding="utf-8").splitlines() if l and not l.startswith("#")]
+    if not lines:
+        problems.append("cpu_profiles.tsv 为空")
+    socs = set()
+    modes = set()
+    for line in lines:
+        cells = line.split("\t")
+        if len(cells) < 5:
+            problems.append("cpu_profiles.tsv 存在列数不足的行")
+            break
+        socs.add(cells[0])
+        modes.add(cells[1])
+    expected_modes = {"powersave", "balance", "performance", "fast", "crazy"}
+    if modes != expected_modes:
+        problems.append(f"cpu_profiles.tsv 模式不全：{sorted(modes)}")
+    import json
+    for p in sorted((MODULE / "config").glob("*.json")):
+        data = json.loads(p.read_text(encoding="utf-8"))
+        models = ((data.get("modules") or {}).get("cpu") or {}).get("powerModel") or []
+        if models and p.stem not in socs:
+            problems.append(f"cpu_profiles.tsv 缺少 {p.stem}（配置有 powerModel）")
+    if (MODULE / "bin/uperf").exists():
+        problems.append("module/bin/uperf 仍存在；v1.11.0 起不得内置 uperf")
+    if (MODULE / "script/libuperf.sh").exists():
+        problems.append("module/script/libuperf.sh 仍存在；v1.11.0 起不得依赖 uperf")
+    if not (MODULE / "script/cpu_policy.sh").is_file():
+        problems.append("缺少 script/cpu_policy.sh")
+    return problems
+
+
 def verify(zip_path: Path):
     problems = []
     with zipfile.ZipFile(zip_path) as zf:
@@ -135,6 +172,12 @@ def verify(zip_path: Path):
             problems.append("缺少 module.prop")
         if "customize.sh" not in names:
             problems.append("缺少 customize.sh")
+        if "cpu_profiles.tsv" not in names:
+            problems.append("缺少 cpu_profiles.tsv")
+        if "script/cpu_policy.sh" not in names:
+            problems.append("缺少 script/cpu_policy.sh")
+        if "bin/uperf" in names:
+            problems.append("安装包内仍有 bin/uperf")
         if not any(n.startswith("META-INF/com/google/android/") for n in names):
             problems.append("缺少 META-INF 刷入入口")
         for n in names:
@@ -156,11 +199,14 @@ def verify(zip_path: Path):
 
 
 def main():
+    # JSON 是唯一配置源：每次打包前重生成 CPU 表，避免表和配置漂移。
+    subprocess.run([sys.executable, str(ROOT / "tools/gen_cpu_profiles.py")], check=True)
     DIST.mkdir(parents=True, exist_ok=True)
     entries = collect()
     problems = []
     for rel, _, _ in entries:
         check_text(rel)
+    problems += check_cpu_policy()
     for rel in ("tests/shell/run-tests.sh",):
         path = ROOT / rel
         data = path.read_bytes()

@@ -28,6 +28,13 @@ esac
 
 case "$1" in
     powersave|balance|performance|fast|crazy)
+        sh "$BASEDIR/cpu_policy.sh" apply "$1" >/dev/null 2>&1 || :;;
+    auto) sh "$BASEDIR/cpu_policy.sh" apply balance >/dev/null 2>&1 || :;;
+    init) sh "$BASEDIR/cpu_policy.sh" apply balance >/dev/null 2>&1 || :;;
+esac
+
+case "$1" in
+    powersave|balance|performance|fast|crazy)
         sh "$BASEDIR/gpu_profile.sh" "$1" >/dev/null 2>&1 || :;;
-    init) sh "$BASEDIR/gpu_profile.sh" balance >/dev/null 2>&1 || :;;
+    auto|init) sh "$BASEDIR/gpu_profile.sh" balance >/dev/null 2>&1 || :;;
 esac

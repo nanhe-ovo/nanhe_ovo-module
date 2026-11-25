@@ -25,7 +25,7 @@ note() { ui_print "- $1"; }
 # KernelSU / APatch 解包模块时不会还原 zip 里记录的可执行位，文件可能以 0644 落盘；
 # 因此「校验」必须排在「授权」之后，否则会把权限缺失误判成文件缺失。
 fix_perms() {
-    for f in "$MODPATH/bin/uperf" "$MODPATH"/bin/busybox/* "$MODPATH"/bin/appopt/*; do
+    for f in "$MODPATH"/bin/busybox/* "$MODPATH"/bin/appopt/*; do
         [ -f "$f" ] || continue
         chown 0:0 "$f" 2>/dev/null
         chmod 0755 "$f" 2>/dev/null
@@ -42,39 +42,14 @@ fix_perms() {
     return 0
 }
 
-# --- 引擎就绪：解包不完整时尽量自愈，而不是直接判死 ---
-ensure_engine() {
-    ENGINE="$MODPATH/bin/uperf"
-    [ -s "$ENGINE" ] && return 0
-
-    # 1) 从本模块的旧安装（升级场景）取回引擎
-    for prev in /data/adb/modules/nanhe_ovo/bin/uperf /data/adb/modules_update/nanhe_ovo/bin/uperf; do
-        [ -s "$prev" ] || continue
-        [ "$prev" = "$ENGINE" ] && continue
-        cp -f "$prev" "$ENGINE" 2>/dev/null && note "已从旧安装恢复 bin/uperf"
-        break
-    done
-    [ -s "$ENGINE" ] && return 0
-
-    # 2) 管理器给的 ZIPFILE 还在，就按条目重新解出 bin/
-    if [ -n "${ZIPFILE:-}" ] && [ -f "$ZIPFILE" ]; then
-        if type unzip >/dev/null 2>&1; then
-            unzip -o "$ZIPFILE" 'bin/*' -d "$MODPATH" >/dev/null 2>&1
-        elif [ -x "$MODPATH/bin/busybox/busybox" ]; then
-            "$MODPATH/bin/busybox/busybox" unzip -o "$ZIPFILE" 'bin/*' -d "$MODPATH" >/dev/null 2>&1
-        fi
-        [ -s "$ENGINE" ] && note "安装包解包不完整，已从 zip 重新解出 bin/"
-    fi
-    return 0
-}
-
 ui_print "* 南何ovo ${VERSION} · 性能调度与频率面板"
-ui_print "* 引擎来源：Uperf-Game-Turbo（Apache-2.0）"
+ui_print "* CPU 策略：自研 cpu_policy.sh（表驱动，不再内置 uperf 二进制）"
+ui_print "* 配置数据来源：Uperf-Game-Turbo 功耗模型（Apache-2.0，仅作为 JSON 配置源）"
 ui_print "* 线程引擎：AppOptR（SutoLiu，GPL-3.0，gitee.com/sutoliu/AppOptR）"
-ui_print "* 请勿同时安装其它 uperf 类模块，也不要自行切换 CPU 调速器"
+ui_print "* 请勿同时安装其它会改写 CPU 频率的模块，也不要自行切换 CPU 调速器"
 ui_print ""
 
-# --- 架构检查：本模块内置的 uperf 为 aarch64 可执行文件 ---
+# --- 架构检查：busybox 与 AppOptR 二进制为 aarch64 ---
 ABI="$(getprop ro.product.cpu.abi 2>/dev/null)"
 case "$ABI" in
     arm64*) note "架构 ${ABI}，符合要求" ;;
@@ -83,11 +58,10 @@ esac
 
 # --- 冲突提示（只提示，不删除任何其它模块）---
 for other in /data/adb/modules/uperf /data/adb/modules_update/uperf; do
-    [ -d "$other" ] && ui_print "! 检测到已安装的 uperf 模块：${other}，两者会同时改写频率与调度"
+    [ -d "$other" ] && ui_print "! 检测到已安装的 uperf 模块：${other}；本模块不再启动 uperf，但双方仍可能同时改写频率"
 done
 
 # --- 平台配置选择 ---
-ensure_engine
 fix_perms
 
 . "$MODPATH/script/pathinfo.sh"
@@ -142,16 +116,13 @@ else
     SRC="$MODPATH/config/template.json"
     CFGNAME=template
     [ -f "$SRC" ] || abort "! 模块内缺少 template.json，安装包不完整"
-    note "未匹配到平台配置，改用通用模板 template.json（频率档位可能与本机不完全一致；该模板不含功耗模型，uperf 不会接管 CPU 频率）"
+    note "未匹配到平台配置，改用通用模板 template.json（该模板不含功耗模型，cpu_policy 会用硬件峰值的温和比例兜底）"
 fi
 
-if [ ! -f "$MODPATH/bin/uperf" ]; then
-    note "bin 目录内容：$(ls -l "$MODPATH/bin" 2>/dev/null | tr '\n' ' ')"
-    abort "! 模块内缺少 bin/uperf，安装包不完整（请用完整 zip 重刷）"
+if [ ! -s "$MODPATH/cpu_profiles.tsv" ]; then
+    abort "! 模块内缺少 cpu_profiles.tsv，安装包不完整（请用完整 zip 重刷）"
 fi
-[ -s "$MODPATH/bin/uperf" ] || abort "! bin/uperf 为空文件，安装包已损坏"
-chmod 0755 "$MODPATH/bin/uperf" 2>/dev/null
-[ -x "$MODPATH/bin/uperf" ] || abort "! bin/uperf 无法执行：chmod 0755 失败，请确认 /data 分区可写"
+[ -s "$MODPATH/script/cpu_policy.sh" ] || abort "! 模块内缺少 script/cpu_policy.sh，安装包不完整"
 
 if [ ! -f "$MODPATH/bin/busybox/busybox" ]; then
     abort "! 模块内缺少 bin/busybox/busybox，安装包不完整"
@@ -173,9 +144,44 @@ chmod 0755 "$MODPATH/bin/appopt/AppOpt" "$MODPATH/bin/appopt/AppOpt-ebpf" 2>/dev
 # --- 写入用户目录（保留既有分应用规则）---
 mkdir -p "$USER_PATH" || abort "! 无法创建 ${USER_PATH}（存储未挂载或权限不足）"
 if [ -f "$USER_PATH/uperf.json" ]; then
-    cp -f "$USER_PATH/uperf.json" "$USER_PATH/uperf.json.bak" && note "已备份旧 uperf.json"
+    cp -f "$USER_PATH/uperf.json" "$USER_PATH/uperf.json.bak" && note "已备份旧配置 uperf.json"
 fi
 cp -f "$SRC" "$USER_PATH/uperf.json" || abort "! 写入 ${USER_PATH}/uperf.json 失败"
+
+# 分应用规则迁移：旧模板是 14 款 performance + "* performance"，
+# v1.10 新模板是 48 款 fast + "- powersave" + "* balance"。
+# 直接按“文件存在就跳过”会让升级用户继续落到旧默认规则，三角洲尤其明显。
+merge_perapp() {
+    OLD_RULES="$USER_PATH/perapp_powermode.txt"
+    NEW_RULES="$MODPATH/config/perapp_powermode.txt"
+    [ -f "$OLD_RULES" ] && [ ! -L "$OLD_RULES" ] || return 0
+    [ -f "$NEW_RULES" ] || return 0
+    # 已经是新模板（含 DFM 且默认 balance）就不动用户文件
+    if grep -q '^com\.tencent\.tmgp\.dfm' "$OLD_RULES" 2>/dev/null &&
+       grep -q '^[[:space:]]*\*[[:space:]]*balance' "$OLD_RULES" 2>/dev/null; then
+        return 0
+    fi
+    cp -f "$OLD_RULES" "$OLD_RULES.bak" 2>/dev/null || :
+    awk -F ' ' '
+        FNR == NR {
+            if ($0 ~ /^#/ || NF == 0) next
+            if ($1 == "*" || $1 == "-") { print; next }
+            known[$1] = 1
+            print
+            next
+        }
+        {
+            if ($0 ~ /^#/ || NF == 0) next
+            if ($1 == "*" || $1 == "-") next
+            if ($1 in known) next
+            print
+        }
+    ' "$NEW_RULES" "$OLD_RULES" > "$USER_PATH/.perapp.merge" || return 0
+    mv -f "$USER_PATH/.perapp.merge" "$OLD_RULES" 2>/dev/null || :
+    chmod 0644 "$OLD_RULES" 2>/dev/null || :
+    note "已迁移旧版分应用规则（保留自定义包，默认规则更新为 fast/balance）"
+}
+merge_perapp
 if [ ! -f "$USER_PATH/perapp_powermode.txt" ]; then
     cp -f "$MODPATH/config/perapp_powermode.txt" "$USER_PATH/perapp_powermode.txt" || abort "! 写入分应用规则失败"
 fi
@@ -192,13 +198,12 @@ chmod 0700 /data/adb/nanhe_ovo 2>/dev/null
 printf '%s\n' "$CFGNAME" >/data/adb/nanhe_ovo/device_config.txt
 printf '%s\n' "$CFG_SRC" >/data/adb/nanhe_ovo/config_source.txt
 chmod 0600 /data/adb/nanhe_ovo/device_config.txt /data/adb/nanhe_ovo/config_source.txt 2>/dev/null
-# 回退模板时把原因写进运行日志：模板没有 CPU 功耗模型，uperf 不接管频率，
-# 系统 DVFS 会按自己的策略频繁升降频（真机上表现为「模块在降频」）。
+# 回退模板时写日志：模板没有功耗模型，cpu_policy 只用通用上限兜底。
 if [ "$CFGNAME" = template ]; then
     LOGF=/data/adb/nanhe_ovo/log.txt
     if [ ! -L "$LOGF" ]; then
         printf '%s\t%s\t%s\t%s\n' "$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null)" warn config \
-            "未匹配到平台配置（platform=${PLATFORM:-?} board=${BOARD:-?}），已回退 template.json；该模板不含 CPU 功耗模型，uperf 不会接管频率，系统 DVFS 可能频繁升降频" \
+            "未匹配到平台配置（platform=${PLATFORM:-?} board=${BOARD:-?}），已回退 template.json；该模板不含 CPU 功耗模型，cpu_policy 将使用硬件峰值的温和比例" \
             >>"$LOGF" 2>/dev/null
     fi
 fi
@@ -214,7 +219,7 @@ fi
 rm -rf "$MODPATH/config"
 
 ui_print ""
-ui_print "* 安装完成，重启后引擎自动启动"
+ui_print "* 安装完成，重启后 CPU 策略自动应用"
 ui_print "* 打开 WebUI：KernelSU / APatch 管理器 → 模块 → 南何ovo → 打开 WebUI"
 ui_print "* Magisk 本体没有模块 WebUI，可用 KsuWebUIStandalone 等工具打开同一页面"
 ui_print "* 便携控制：sh /data/powercfg.sh balance"

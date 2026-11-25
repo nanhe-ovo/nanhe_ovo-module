@@ -1,18 +1,10 @@
-/* 性能调度 · Miuix 观感（大圆角白卡、浅灰底、绿色状态卡）＋ 只保留底栏的液态玻璃。
-   玻璃配方来自 Kyant0/AndroidLiquidGlass 的 Glass Bottom Bar（vibrancy + blur + lens + surface），
-   在 WebView 里用 backdrop-filter + 折射/色散渐变近似，不做逐像素折射。 */
-:root{color-scheme:light;--bg:#f1f2f4;--card:#fff;--text:#141519;--muted:#8a8e98;--line:#eceef2;--accent:#3482ff;--accent-soft:#e8f0ff;--accent-strong:#1f6df0;--shadow:0 1px 2px rgba(20,26,40,.05),0 10px 26px -20px rgba(20,26,40,.28);--note:#f6f7f9;--danger:#d6453f;--nav:rgba(255,255,255,.9);--input:#f4f5f7;--hero:#e8f0ff;--green:#1f9c4d;--green-soft:#e3f8e8;--track:#dfe2e8;
---glass:rgba(255,255,255,.6);--glass-strong:rgba(255,255,255,.82);--glass-line:rgba(255,255,255,.7);--glass-edge:rgba(255,255,255,.95);--glass-inner:rgba(255,255,255,.5);--glass-shadow:0 26px 54px -20px rgba(16,28,60,.5),inset 0 1px 0 rgba(255,255,255,.95),inset 0 -1px 0 rgba(10,20,40,.12);--glass-blur:blur(14px) saturate(220%) brightness(1.04);--fringe-a:rgba(255,96,150,.4);--fringe-b:rgba(60,190,255,.42);--aurora-1:rgba(52,130,255,.34);--aurora-2:rgba(150,110,255,.28);--aurora-3:rgba(70,210,255,.3);--aurora-4:rgba(255,150,110,.24);--refract-h:16px;--refract-top:rgba(255,255,255,.7);--refract-bottom:rgba(16,26,48,.16);--chroma-a:rgba(255,60,125,.5);--chroma-b:rgba(40,190,255,.55);--spec-x:50%;--spec-y:6%;--spec:rgba(255,255,255,.55);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC","Microsoft YaHei",sans-serif;font-synthesis:none}
-:root[data-theme=dark]{color-scheme:dark;--bg:#0d0e12;--card:#1a1b20;--text:#e9ebf0;--muted:#9a9fab;--line:#2a2c34;--accent:#6da6ff;--accent-soft:#1b2740;--accent-strong:#8fbaff;--shadow:none;--note:#1b1c22;--danger:#f0908c;--nav:rgba(22,23,28,.92);--input:#23252c;--hero:#182234;--green:#5fd08a;--green-soft:#16281c;--track:#33363f;
---glass:rgba(28,31,40,.5);--glass-strong:rgba(32,35,46,.78);--glass-line:rgba(255,255,255,.16);--glass-edge:rgba(255,255,255,.32);--glass-inner:rgba(255,255,255,.14);--glass-shadow:0 26px 54px -20px rgba(0,0,0,.8),inset 0 1px 0 rgba(255,255,255,.2);--fringe-a:rgba(255,110,150,.3);--fringe-b:rgba(70,180,255,.34);--aurora-1:rgba(60,110,255,.36);--aurora-2:rgba(120,80,255,.28);--aurora-3:rgba(40,170,255,.3);--aurora-4:rgba(255,110,80,.22);--refract-top:rgba(255,255,255,.34);--refract-bottom:rgba(0,0,0,.4);--chroma-a:rgba(255,80,140,.4);--chroma-b:rgba(60,180,255,.44);--spec:rgba(255,255,255,.32)}
+/* 性能调度 · Miuix 观感（大圆角白卡、浅灰底、绿色状态卡）。
+   v1.11.0 起底栏改为实色悬浮胶囊，不再使用液态玻璃/背景模糊/折射层。 */
+:root{color-scheme:light;--bg:#f1f2f4;--card:#fff;--text:#141519;--muted:#8a8e98;--line:#eceef2;--accent:#3482ff;--accent-soft:#e8f0ff;--accent-strong:#1f6df0;--shadow:0 1px 2px rgba(20,26,40,.05),0 10px 26px -20px rgba(20,26,40,.28);--note:#f6f7f9;--danger:#d6453f;--input:#f4f5f7;--hero:#e8f0ff;--green:#1f9c4d;--green-soft:#e3f8e8;--track:#dfe2e8;
+font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC","Microsoft YaHei",sans-serif;font-synthesis:none}
+:root[data-theme=dark]{color-scheme:dark;--bg:#0d0e12;--card:#1a1b20;--text:#e9ebf0;--muted:#9a9fab;--line:#2a2c34;--accent:#6da6ff;--accent-soft:#1b2740;--accent-strong:#8fbaff;--shadow:none;--note:#1b1c22;--danger:#f0908c;--input:#23252c;--hero:#182234;--green:#5fd08a;--green-soft:#16281c;--track:#33363f;
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
-/* 底栏玻璃需要背后有颜色层次：只在页面底部铺一层很淡的色斑，卡片区域保持干净的 Miuix 浅灰 */
-body::before{content:"";position:fixed;inset:0;z-index:-2;pointer-events:none;background:
-radial-gradient(42% 26% at 2% 96%,var(--aurora-1),transparent 70%),
-radial-gradient(38% 24% at 100% 92%,var(--aurora-2),transparent 72%),
-radial-gradient(50% 18% at 50% 101%,var(--aurora-3),transparent 74%),
-radial-gradient(28% 16% at 78% 88%,var(--aurora-4),transparent 72%)}
 button,input,select{font:inherit}button,a,input,select{touch-action:manipulation}button{cursor:pointer;border:0;background:none;color:inherit}button:disabled,select:disabled{opacity:.45;cursor:not-allowed}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:3px}a{color:var(--accent);text-decoration:none}h1,h2,h3,p{margin:0}h2{font-size:17px;font-weight:650;letter-spacing:.01em}h3{font-size:15px}p{overflow-wrap:anywhere}
 .app-shell{max-width:780px;margin:auto;padding:0 20px calc(132px + env(safe-area-inset-bottom))}
 .topbar{height:92px;display:flex;align-items:center;justify-content:space-between;padding-top:env(safe-area-inset-top)}
@@ -145,27 +137,19 @@ select{display:block;width:100%;background:var(--input);border:1px solid transpa
 .prose strong{color:var(--text)}
 .prose code{font-size:11px;overflow-wrap:anywhere;background:var(--input);padding:1px 5px;border-radius:6px}
 .prose a{font-size:12px}
-/* 悬浮液态玻璃导航（唯一保留玻璃的区域）：白色半透胶囊 + 背景模糊/饱和 + 上下折射带 + 左右色散，
-   当前页有一枚圆形玻璃镜片在四格之间滑动，滚动时整条胶囊轻微倾斜、拉伸再回位。 */
-.bottom-nav{position:fixed;left:50%;bottom:calc(14px + env(safe-area-inset-bottom));--nav-index:0;--nav-skew:0deg;--nav-stretch:1;--nav-drop:0px;transform:translateX(-50%) translateY(var(--nav-drop)) scaleX(var(--nav-stretch)) skewX(var(--nav-skew));transform-origin:50% 100%;width:min(430px,calc(100% - 26px));display:grid;grid-template-columns:repeat(4,1fr);padding:8px;background:linear-gradient(180deg,rgba(255,255,255,.5),rgba(252,254,255,.34) 52%,rgba(246,251,255,.42));backdrop-filter:blur(22px) saturate(240%) contrast(124%) brightness(1.06);-webkit-backdrop-filter:blur(22px) saturate(240%) contrast(124%) brightness(1.06);border:1.5px solid rgba(255,255,255,.7);border-radius:999px;box-shadow:0 24px 46px -16px rgba(16,28,60,.5),0 2px 6px rgba(16,28,60,.08),inset 0 2px 0 rgba(255,255,255,.95),inset 0 -2px 0 var(--refract-bottom),inset 3px 0 0 var(--chroma-a),inset -3px 0 0 var(--chroma-b),inset 10px 0 22px -14px var(--fringe-a),inset -10px 0 22px -14px var(--fringe-b);overflow:hidden;isolation:isolate;z-index:20}
-/* 折射/色散层：顶部提亮、底部压暗，模拟 lens(16dp,32dp) 的上下折射带 */
-.bottom-nav::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:0;background:radial-gradient(120% 150% at var(--spec-x) var(--spec-y),var(--spec),rgba(255,255,255,0) 58%),linear-gradient(180deg,var(--refract-top) 0,rgba(255,255,255,.18) calc(var(--refract-h) * .35),rgba(255,255,255,0) var(--refract-h),rgba(0,0,0,0) calc(100% - var(--refract-h)),rgba(0,0,0,.05) calc(100% - var(--refract-h) * .35),var(--refract-bottom) 100%)}
-/* 镜片：与格子等宽的圆角胶囊，内部比底栏更亮更清，边缘一圈高光把背景「折」进来 */
-.nav-lens{position:absolute;top:7px;bottom:7px;left:calc(8px + var(--nav-index,0) * ((100% - 16px) / 4));width:calc((100% - 16px) / 4 - 6px);margin-left:3px;border-radius:999px;background:radial-gradient(120% 100% at 50% 10%,rgba(255,255,255,.9),rgba(255,255,255,.66) 48%,rgba(236,246,255,.46) 100%);box-shadow:inset 0 1px 1px #fff,inset 0 -3px 5px rgba(20,40,80,.16),inset 2px 0 3px -1px var(--chroma-a),inset -2px 0 3px -1px var(--chroma-b),0 0 0 1.5px rgba(255,255,255,.7),0 0 14px rgba(150,200,255,.6),0 6px 14px -6px rgba(20,40,80,.35);transition:left .52s cubic-bezier(.34,1.32,.42,1);z-index:1;pointer-events:none}
-.nav-lens::before{content:"";position:absolute;inset:0;border-radius:inherit;border:1px solid rgba(255,255,255,.95);box-shadow:inset 0 0 0 1px rgba(255,255,255,.5),inset 4px 0 7px -5px var(--chroma-a),inset -4px 0 7px -5px var(--chroma-b),inset 0 -9px 15px -11px rgba(10,25,60,.4)}
-.nav-lens::after{content:"";position:absolute;left:12%;right:12%;top:3px;height:34%;border-radius:999px;background:linear-gradient(180deg,rgba(255,255,255,.95),rgba(255,255,255,0));filter:blur(1px)}
-.bottom-nav a{position:relative;z-index:2;display:flex;align-items:center;flex-direction:column;gap:3px;color:var(--muted);font-size:10px;padding:8px 2px 6px;border-radius:20px}
+/* 悬浮实色 Miuix 底栏：离底边 16px 的纯白大圆角胶囊，当前页用浅蓝胶囊高亮。 */
+.bottom-nav{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));transform:translateX(-50%);width:min(430px,calc(100% - 28px));display:grid;grid-template-columns:repeat(4,1fr);padding:8px;background:var(--card);border:1px solid var(--line);border-radius:999px;box-shadow:0 12px 34px -20px rgba(20,26,40,.3),0 2px 6px rgba(20,26,40,.05);z-index:20}
+.bottom-nav a{position:relative;z-index:2;display:flex;align-items:center;flex-direction:column;gap:3px;color:var(--muted);font-size:10px;padding:7px 2px 5px;border-radius:999px;transition:background .18s ease,color .18s ease}
 .bottom-nav a>span{font-size:22px;line-height:1.15;display:flex;align-items:center;justify-content:center;width:30px;height:30px}
 .bottom-nav a svg{width:22px;height:22px;display:block}
-.bottom-nav a[aria-current=page]{color:var(--accent-strong);font-weight:700}
-:root[data-theme=dark] .bottom-nav{background:linear-gradient(180deg,rgba(52,58,74,.5),rgba(20,23,34,.42));border-color:rgba(255,255,255,.18);box-shadow:0 24px 46px -16px rgba(0,0,0,.8),inset 0 1px 0 rgba(255,255,255,.3),inset 0 -2px 0 var(--refract-bottom),inset 3px 0 0 var(--chroma-a),inset -3px 0 0 var(--chroma-b),inset 10px 0 22px -14px var(--fringe-a),inset -10px 0 22px -14px var(--fringe-b)}
-:root[data-theme=dark] .nav-lens{background:radial-gradient(120% 100% at 50% 12%,rgba(150,190,255,.42),rgba(70,110,190,.18) 58%,rgba(30,44,80,.14));box-shadow:inset 0 1px 1px rgba(255,255,255,.34),inset 0 -2px 4px rgba(0,0,0,.4),inset 2px 0 2px -1px var(--chroma-a),inset -2px 0 2px -1px var(--chroma-b)}
-:root[data-theme=dark] .bottom-nav a[aria-current=page]{color:#9cc0ff}
+.bottom-nav a[aria-current=page]{background:var(--accent-soft);color:var(--accent-strong);font-weight:700}
+:root[data-theme=dark] .bottom-nav{background:var(--card);border-color:var(--line);box-shadow:0 12px 34px -20px rgba(0,0,0,.75),0 2px 6px rgba(0,0,0,.2)}
+:root[data-theme=dark] .bottom-nav a[aria-current=page]{background:var(--accent-soft);color:#9cc0ff}
 /* 按下反馈：只有可点控件轻微收缩，不做整页玻璃动效 */
 .card,.mode-button,.switch-row,.app-list,.search-field,.tier-chip,.notice,.soft-note,.text-button,.icon-button,.stat-card{transition:transform .4s cubic-bezier(.34,1.5,.6,1),box-shadow .25s ease}
 .pressing{transform:scale(.982);filter:brightness(1.02)}
 dialog{border:1px solid var(--line);border-radius:26px;padding:26px;max-width:calc(100% - 36px);width:380px;background:var(--card);color:var(--text);box-shadow:0 25px 90px rgba(0,0,0,.35)}
-dialog::backdrop{background:rgba(10,16,35,.4);backdrop-filter:blur(6px)}
+dialog::backdrop{background:rgba(10,16,35,.45)}
 dialog h2{font-size:20px;margin:12px 0}
 dialog p{font-size:13px;white-space:pre-wrap;margin:10px 0}
 .dialog-icon{width:40px;height:40px;display:flex;align-items:center;justify-content:center;background:var(--accent-soft);border-radius:14px;color:var(--accent);font-weight:800;font-size:21px}
@@ -174,10 +158,6 @@ body.busy .status-dot{animation:pulse 1s infinite}@keyframes pulse{50%{opacity:.
 @media(min-width:650px){.app-shell{padding-left:34px;padding-right:34px}.topbar{height:104px}.summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.mode-button{padding:19px}.page-heading{margin-top:10px}.frequency-list{display:grid;grid-template-columns:1fr 1fr;gap:14px}.frequency-list .card{margin:0}.restore-card{margin-top:14px}.bottom-nav{width:min(470px,calc(100% - 54px))}}
 @media(max-width:360px){.app-shell{padding-left:14px;padding-right:14px}.card{padding:17px}.mode-grid{gap:6px}.mode-desc{font-size:8px}h1{font-size:28px}.status-card h2{font-size:32px}.rule-controls{margin-left:0}.current-value{font-size:15px}.restore-card{align-items:flex-start;flex-direction:column}.restore-card button{width:100%}.bottom-nav{width:calc(100% - 18px);bottom:calc(10px + env(safe-area-inset-bottom))}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
-/* 没有 backdrop-filter 的旧 WebView：底栏回退成不透明胶囊，其余页面本来就是实色卡 */
-@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
-  .bottom-nav{background:var(--nav)}
-}
 .refresh-card{padding-bottom:18px}
 .refresh-tiers{display:grid;grid-template-columns:repeat(auto-fill,minmax(58px,1fr));gap:8px;margin-top:14px}
 .tier-chip{padding:11px 6px;border-radius:15px;background:var(--card);font-size:12px;font-weight:650;color:var(--text);box-shadow:inset 0 0 0 1px var(--line)}

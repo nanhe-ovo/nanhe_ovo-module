@@ -38,7 +38,7 @@
         <article class="card info-card"><h2>运行状态</h2><dl id="system-info" class="kv-list"></dl></article>
         <div class="section-title"><h2>性能模式</h2><span>全局即时切换</span></div>
         <div id="mode-grid" class="mode-grid"></div>
-        <div class="switch-row"><div><h2>系统调优</h2><p>开机会压掉厂商调度与温控进程；关闭后只启动 uperf 引擎。改动下次开机生效。</p></div><button id="tune-switch" class="switch" type="button" role="switch" aria-checked="false" aria-label="系统调优开关" disabled></button></div>
+        <div class="switch-row"><div><h2>系统调优</h2><p>开机会压掉厂商调度与温控进程；关闭后仍会应用自研 CPU 策略。改动下次开机生效。</p></div><button id="tune-switch" class="switch" type="button" role="switch" aria-checked="false" aria-label="系统调优开关" disabled></button></div>
         <div class="switch-row"><div><h2>线程调度</h2><p>AppOptR 线程引擎（SutoLiu，GPL-3.0）：档位跟随性能模式自动切换，应用页可为单个应用绑定线程预设。省电档收紧大核使用，超频档保核并固定渲染线程。</p></div><button id="thread-switch" class="switch" type="button" role="switch" aria-checked="false" aria-label="线程调度开关" disabled></button></div>
         <div class="section-title"><h2>运行快照</h2><a href="#frequency">管理频率 ↗</a></div>
         <div id="device-summary" class="summary-grid"></div>
@@ -46,7 +46,7 @@
       </section>
 
       <section id="page-frequency" class="page" aria-label="频率管理" hidden>
-        <article class="soft-note"><span>ⓘ</span><p>只使用设备上报的频率表，界面显示 MHz，写入保留后端原始 kHz / Hz。uperf 在切换性能模式时会重写同一批节点，因此这里的限制可能被调度覆盖；需要稳定生效时请先在下方恢复默认并观察。</p></article>
+        <article class="soft-note"><span>ⓘ</span><p>只使用设备上报的频率表，界面显示 MHz，写入保留后端原始 kHz / Hz。cpu_policy 在切换性能模式时会重写同一批上限节点，因此这里的限制可能被模式切换覆盖；需要稳定生效时请先在下方恢复默认并观察。</p></article>
         <div id="frequency-list" class="frequency-list"></div>
         <article class="card refresh-card">
           <div class="frequency-header">
@@ -62,10 +62,10 @@
       </section>
 
       <section id="page-apps" class="page" aria-label="应用调度策略" hidden>
-        <article class="card"><div class="section-title inside"><h2>特殊场景</h2><span>uperf 规则</span></div><p class="muted">默认规则 * 与熄屏规则 - 各自独立可编辑。</p><div id="special-rules"></div></article>
+        <article class="card"><div class="section-title inside"><h2>特殊场景</h2><span>分应用规则</span></div><p class="muted">默认规则 * 与熄屏规则 - 各自独立可编辑。</p><div id="special-rules"></div></article>
         <div class="section-title"><h2>游戏调度策略</h2><span id="app-count">0 款游戏</span></div>
         <label class="search-field"><span aria-hidden="true">⌕</span><input id="app-search" type="search" placeholder="搜索游戏名或包名" autocomplete="off" aria-label="搜索游戏名或包名"></label>
-        <p class="list-note">这里只列出 game.list 内的游戏，其余应用跟随默认规则；保存只改动所选游戏。线程预设由 AppOptR 引擎实时生效，调度策略由 uperf 在前台切换时读取。三角洲行动等 ACE 反作弊游戏不写 cpuset/线程亲和性，保存时会提示跳过原因。</p>
+        <p class="list-note">这里只列出 game.list 内的游戏，其余应用跟随默认规则；保存只改动所选游戏。线程预设由 AppOptR 引擎实时生效，调度策略由自研 cpu_policy 在前台切换时应用。三角洲行动等 ACE 反作弊游戏不写 cpuset/线程亲和性，保存时会提示跳过原因。</p>
         <div id="app-list" class="app-list"></div>
       </section>
 
@@ -88,11 +88,11 @@
         </article>
         <article class="card prose">
           <h2>熟悉的亲和感，独立的设计</h2>
-          <p>采用 Miuix 观感的浅灰底、纯白大圆角卡片、绿色状态卡与底部悬浮胶囊导航；液态玻璃<strong>只用在这一条底栏</strong>，卡片与其它控件保持实色，不再整页铺玻璃。这是独立实现的 HTML / CSS / JavaScript 页面，<strong>并非原生 Miuix</strong>，与 Miuix、Xiaomi 无隶属或官方关系。</p>
-          <h2>液态玻璃说明</h2>
-          <p>底栏玻璃参照 <a href="https://github.com/Kyant0/AndroidLiquidGlass" target="_blank" rel="noopener noreferrer">Kyant0/AndroidLiquidGlass</a>（Compose Multiplatform 的 Backdrop 库）的要素实现：背景模糊与饱和度提升、边缘折射带（顶部被拉伸变亮、底部被压缩变暗，厚度 16px）、左右各 2px 红/青色散、跟随手指的镜面高光、按下时的弹性收缩；再按 Glass Bottom Bar 的配方组合（vibrancy + 小半径模糊 + lens 折射 + 半透白 surface）。当前页的圆形玻璃镜片会在四格之间滑动，页面滚动时底栏也会轻微倾斜、拉伸再回位。这些在本页面用 CSS 的 <code>backdrop-filter</code>、渐变与内阴影近似：<strong>不是像素级折射</strong>（那需要 Shader 逐像素重采样背景），本面板也不引入任何外部资源；不支持 <code>backdrop-filter</code> 的旧 WebView 会把底栏回退成不透明胶囊。</p>
-          <h2>引擎来源</h2>
-          <p>调度引擎、平台配置与启动流程来自 <strong>Uperf-Game-Turbo</strong>（作者 Matt Yang / 吟惋兮，Apache-2.0），模块内的 <code>LICENSE</code> 与 <code>NOTICE</code> 保留了原始声明。</p>
+          <p>采用 Miuix 观感的浅灰底、纯白大圆角卡片、绿色状态卡与底部实色悬浮胶囊导航；不再使用液态玻璃、背景模糊或折射层。这是独立实现的 HTML / CSS / JavaScript 页面，<strong>并非原生 Miuix</strong>，与 Miuix、Xiaomi 无隶属或官方关系。</p>
+          <h2>底栏设计</h2>
+          <p>底栏是离底边 14px 的实色悬浮胶囊：纯白（深色为主题卡片色）、大圆角、极轻投影，当前页用浅蓝色胶囊高亮。没有 <code>backdrop-filter</code>、折射带、色散或镜片滑动，滚动时也不做玻璃形变；视觉层级完全交给 Miuix 的实色卡片与留白。</p>
+          <h2>配置与脚本来源</h2>
+          <p>CPU 功耗模型与部分启动脚本骨架来自 <strong>Uperf-Game-Turbo</strong>（作者 Matt Yang / 吟惋兮，Apache-2.0）；v1.11.0 起不再内置或启动 uperf 二进制，仅保留 JSON 配置与许可声明。模块内的 <code>LICENSE</code> 与 <code>NOTICE</code> 保留了原始声明。</p>
           <h2>线程引擎来源</h2>
           <p>线程调度引擎来自 <strong>AppOptR</strong>（作者 SutoLiu，GPL-3.0）：按本机拓扑实时解析 e-core / p-core / hp-core 语义核，进程创建与线程改名即时生效，内核无 BTF 时自动回退轮询模式。出处：<a href="https://gitee.com/sutoliu/AppOptR" target="_blank" rel="noopener noreferrer">gitee.com/sutoliu/AppOptR ↗</a>，GPL-3.0 许可证文本随模块分发（<code>appopt/LICENSE-GPL3.txt</code>）。</p>
           <h2>本项目</h2>
@@ -107,7 +107,6 @@
       </section>
     </main>
     <nav class="bottom-nav" aria-label="主导航">
-      <span class="nav-lens" aria-hidden="true"></span>
       <a href="#overview" data-page="overview" aria-current="page"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 10.6 12 3.8l8.5 6.8"/><path d="M5.6 9.4V20h12.8V9.4"/><path d="M10 20v-5.2h4V20"/></svg></span>总览</a>
       <a href="#frequency" data-page="frequency"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M3 14.5c2.4-6.6 4.6 6.6 7-1.5 1.4-4.8 3.2-6 4.6-3.6 1.2 2 2.6 2.7 6.4 1.6"/></svg></span>频率</a>
       <a href="#apps" data-page="apps"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="4" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6"/></svg></span>应用</a>

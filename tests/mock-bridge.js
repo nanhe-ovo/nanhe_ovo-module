@@ -10,7 +10,7 @@
     'info\ttune\t开启',
     'info\tmode\tbalance',
     'info\tmodes\tpowersave balance performance fast',
-    'info\tuperf\t运行中',
+    'info\tpolicy\t已接管（表驱动）',
     'info\trefresh\t120',
     'info\trefresh_target\t120',
     'info\trefresh_pin\ton',

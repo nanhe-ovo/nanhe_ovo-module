@@ -71,7 +71,7 @@ if [ "$(is_mtk)" = "true" ]; then
         lock_val "0" /sys/devices/system/cpu/sched/hint_enable
         lock_val "65" /sys/devices/system/cpu/sched/hint_load_thresh
         #force use ppm
-        echo "force uperf use PPM"
+        echo "force vendor DVFS use PPM"
         lock_val "0 3200000" /proc/ppm/policy/hard_userlimit_max_cpu_freq
         lock_val "0 3200000" /proc/ppm/policy/hard_userlimit_min_cpu_freq
         lock_val "1 3200000" /proc/ppm/policy/hard_userlimit_max_cpu_freq

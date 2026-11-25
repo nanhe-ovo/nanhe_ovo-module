@@ -2,7 +2,7 @@
   'use strict';
   const C = window.NanheCore;
   const $ = id => document.getElementById(id);
-  // 已知模式的展示文案；未知但存在于 uperf.json 的模式按原样显示。
+  // 已知模式的展示文案；未知但存在于策略配置中的模式按原样显示。
   const MODE_META = {
     powersave: ['省电', '轻负载长续航'],
     balance: ['均衡', '日常刚刚好'],
@@ -21,7 +21,6 @@
   };
   const SVG_HEAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">';
   const TITLES = { overview: '设备总览', frequency: '频率与显示', apps: '应用调度策略', about: '关于' };
-  const NAV_ORDER = { overview: 0, frequency: 1, apps: 2, about: 3 };
   const SECTION_TITLES = {
     device: '设备信息', system: '系统信息', hardware: '硬件',
     memory: '内存 RAM', storage: '内部存储', screen: '屏幕', battery: '电池',
@@ -35,7 +34,7 @@
     'info\ttune\t开启',
     'info\tmode\tbalance',
     'info\tmodes\tpowersave balance performance fast crazy',
-    'info\tuperf\t未运行',
+    'info\tpolicy\t已接管（表驱动）',
     'info\tthread\t未运行',
     'info\tthread_manage\ton',
     'info\tthread_profile\tbalance',
@@ -94,7 +93,7 @@
   }
   function connection(text) { $('connection-text').textContent = text; $('connection').classList.toggle('live', state.live); }
   function modeList() { return state.status.modes.length ? state.status.modes : C.FALLBACK_MODES; }
-  function meta(mode) { return MODE_META[mode] || [mode, 'uperf 自定义预设']; }
+  function meta(mode) { return MODE_META[mode] || [mode, '策略自定义预设']; }
   function modeName(mode) { return mode ? meta(mode)[0] : '未设置'; }
   function currentMode() { const info = state.status.info; return info.mode || ''; }
   function tuneOn() { return state.status.info.tune === '开启'; }
@@ -325,7 +324,7 @@
       });
       grid.append(button);
     });
-    if (!modes.length) grid.append(el('p', 'empty', '后端没有报告可用的性能模式，请检查 uperf.json。'));
+    if (!modes.length) grid.append(el('p', 'empty', '后端没有报告可用的性能模式，请检查策略配置。'));
     $('mode-badge').textContent = (state.demo ? '演示 · ' : state.live ? '当前 · ' : '上次读取 · ') + modeName(currentMode());
     $('tune-switch').setAttribute('aria-checked', String(tuneOn()));
     $('thread-switch').setAttribute('aria-checked', String(threadOn()));
@@ -353,11 +352,11 @@
     info.replaceChildren();
     const names = {
       device_config: '平台配置', version: '模块版本', mode: '当前模式', modes: '可用模式',
-      uperf: '调度引擎', tune: '系统调优', baseline: '频率基线', config: '配置文件',
+      policy: 'CPU 策略', tune: '系统调优', baseline: '频率基线', config: '配置文件',
       thread: '线程调度', thread_profile: '线程档位',
       boot_id: '启动批次', service: '服务状态', backend: '后端',
     };
-    const order = ['mode', 'version', 'uperf', 'thread', 'thread_profile', 'baseline', 'tune', 'device_config'];
+    const order = ['mode', 'version', 'policy', 'thread', 'thread_profile', 'baseline', 'tune', 'device_config'];
     Object.entries(state.status.info)
       .filter(([key]) => order.indexOf(key) >= 0)
       .sort((a, b) => (order.indexOf(a[0]) + 1 || 99) - (order.indexOf(b[0]) + 1 || 99))
@@ -469,7 +468,7 @@
     remove.dataset.unavailable = String(!state.rules[pkg]);
     remove.setAttribute('aria-label', '删除 ' + pkg + ' 的策略');
     remove.addEventListener('click', () => mutate('删除策略？', '将删除 ' + pkg + ' 的显式规则。' +
-      (special ? '\n这是特殊规则，删除后由 uperf 默认行为处理。' : '\n该应用将按默认规则处理。'), 'rule', [pkg, 'delete']));
+      (special ? '\n这是特殊规则，删除后由默认策略处理。' : '\n该应用将按默认规则处理。'), 'rule', [pkg, 'delete']));
     controls.append(select, save, remove);
     row.append(controls);
     if (!special) {
@@ -559,7 +558,7 @@
     const card = $('status-card');
     if (!card) return;
     const info = state.status.info || {};
-    const running = state.live && String(info.uperf || '').indexOf('运行') >= 0;
+    const running = state.live && (String(info.policy || '').indexOf('已接管') >= 0 || String(info.policy || '').indexOf('运行') >= 0);
     const threadRunning = state.live && String(info.thread || '').indexOf('运行') >= 0;
     const kind = state.demo ? 'demo' : running ? 'run' : 'idle';
     card.dataset.state = kind;
@@ -568,9 +567,9 @@
     $('status-version').textContent = info.version || 'v-';
     // 只展示模块自身工作状态（调度引擎 / 线程引擎），不再展示 Root 实现方案。
     const moduleState = !state.live ? '未知'
-      : running && threadRunning ? '引擎运行中 · 线程运行中'
-      : running ? '引擎运行中 · 线程未运行'
-      : threadRunning ? '线程运行中 · 引擎未运行'
+      : running && threadRunning ? '策略接管 · 线程运行中'
+      : running ? '策略接管 · 线程未运行'
+      : threadRunning ? '线程运行中 · 策略未接管'
       : '未运行';
     const moduleEl = $('status-module');
     if (moduleEl) moduleEl.textContent = moduleState;
@@ -588,8 +587,6 @@
     });
     $('page-title').textContent = TITLES[page];
     document.title = TITLES[page] + ' · 性能调度';
-    const nav = document.querySelector('.bottom-nav');
-    if (nav && NAV_ORDER[page] !== undefined) nav.style.setProperty('--nav-index', NAV_ORDER[page]);
   }
 
   let theme;
@@ -616,7 +613,7 @@
   $('tune-switch').addEventListener('click', () => {
     const next = !tuneOn();
     mutate(next ? '开启系统调优？' : '关闭系统调优？',
-      next ? '开机会执行厂商调度压平与温控进程处理（uperf 上游行为），下次开机生效。' : '开机会跳过厂商调度压平与温控处理，只启动 uperf 引擎，下次开机生效。',
+      next ? '开机会执行厂商调度压平与温控进程处理，并应用自研 CPU 策略；下次开机生效。' : '开机会跳过厂商调度压平与温控处理，仍应用自研 CPU 策略；下次开机生效。',
       'tune', [next ? 'on' : 'off']);
   });
   $('thread-switch').addEventListener('click', () => {
@@ -638,17 +635,8 @@
 
   $('app-search').addEventListener('input', () => { state.limit = 60; renderApps(); setBusy(state.busy); });
 
-  // 玻璃的镜面高光跟随指针，按下时轻微收缩再回弹：这是 Backdrop 交互玻璃的核心手感
-  const GLASS_SURFACE = '.card, .bottom-nav, .mode-button, .switch-row, .app-list, .search-field, .tier-chip';
+  // 只保留按压缩放反馈；底栏已改为实色 Miuix 胶囊，不再有高光跟随或滚动形变。
   const PRESSABLE = '.card, .mode-button, .switch-row, .app-list, .search-field, .tier-chip, .notice, .soft-note';
-  document.addEventListener('pointermove', ev => {
-    const surface = ev.target.closest ? ev.target.closest(GLASS_SURFACE) : null;
-    if (!surface) return;
-    const box = surface.getBoundingClientRect();
-    if (!box.width || !box.height) return;
-    surface.style.setProperty('--spec-x', ((ev.clientX - box.left) / box.width * 100).toFixed(1) + '%');
-    surface.style.setProperty('--spec-y', ((ev.clientY - box.top) / box.height * 100).toFixed(1) + '%');
-  }, { passive: true });
   document.addEventListener('pointerdown', ev => {
     const target = ev.target.closest ? ev.target.closest(PRESSABLE) : null;
     if (target) target.classList.add('pressing');
@@ -660,38 +648,6 @@
   };
   document.addEventListener('pointerup', release, true);
   document.addEventListener('pointercancel', release, true);
-
-  // 底栏液态玻璃的滑动反馈：页面滚动带起玻璃的轻微倾斜/拉伸，停下后用弹簧曲线回位（照 Backdrop 的 lens 手感）
-  const nav = document.querySelector('.bottom-nav');
-  let navVel = 0, navTarget = 0, navRaf = 0, navLast = window.scrollY || 0, navTickAt = 0;
-  function navSettle() {
-    if (!nav) return;
-    nav.style.setProperty('--nav-skew', '0deg');
-    nav.style.setProperty('--nav-stretch', '1');
-    nav.style.setProperty('--nav-drop', '0px');
-    nav.style.setProperty('--spec-x', '50%');
-  }
-  function navTick(now) {
-    const dt = navTickAt ? Math.max(8, now - navTickAt) : 16;
-    navTickAt = now;
-    navTarget *= 0.88;
-    navVel += (navTarget - navVel) * Math.min(1, dt / 80);
-    const lean = Math.max(-1, Math.min(1, navVel / 24));
-    if (nav) {
-      nav.style.setProperty('--nav-skew', (lean * 1.8).toFixed(2) + 'deg');
-      nav.style.setProperty('--nav-stretch', (1 - Math.abs(lean) * 0.016).toFixed(3));
-      nav.style.setProperty('--nav-drop', (Math.abs(lean) * 3.2).toFixed(1) + 'px');
-      nav.style.setProperty('--spec-x', (50 - lean * 28).toFixed(1) + '%');
-    }
-    if (Math.abs(navVel) > 0.35 || Math.abs(navTarget) > 0.35) navRaf = requestAnimationFrame(navTick);
-    else { navRaf = 0; navTickAt = 0; navSettle(); }
-  }
-  window.addEventListener('scroll', () => {
-    const y = window.scrollY;
-    navTarget = navTarget * 0.72 + (y - navLast) * 0.9;
-    navLast = y;
-    if (!navRaf) navRaf = requestAnimationFrame(navTick);
-  }, { passive: true });
 
   window.addEventListener('hashchange', navigate);
   navigate(); render(); setBusy(false); refresh();

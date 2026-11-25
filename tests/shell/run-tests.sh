@@ -38,7 +38,7 @@ while IFS= read -r f; do
 done < <(find "$MODULE" -name '*.sh' -o -name 'customize.sh' -o -name 'service.sh' -o -name 'post-fs-data.sh' -o -name 'uninstall.sh' | sort)
 [ "$SYNTAX_FAIL" = 0 ] && ok "全部 shell 脚本语法通过"
 
-for f in customize.sh service.sh post-fs-data.sh uninstall.sh bin/uperf bin/busybox/busybox script/control.sh script/initsvc.sh; do
+for f in customize.sh service.sh post-fs-data.sh uninstall.sh bin/busybox/busybox script/control.sh script/initsvc.sh script/cpu_policy.sh; do
     [ -x "$MODULE/$f" ] || bad "缺少可执行位：$f"
 done
 ok "模块内脚本与二进制具备可执行位"
@@ -90,10 +90,18 @@ make_fixture() {
     mkdir -p "$D/data/adb/modules/nanhe_ovo"
     cp "$MODULE/module.prop" "$D/data/adb/modules/nanhe_ovo/module.prop"
     cp "$MODULE/game.list" "$D/data/adb/modules/nanhe_ovo/game.list"
+    cp "$MODULE/cpu_profiles.tsv" "$D/data/adb/modules/nanhe_ovo/cpu_profiles.tsv"
+    mkdir -p "$D/data/adb/modules/nanhe_ovo/script"
+    sed -e "s#/data/adb/modules/nanhe_ovo#$D/data/adb/modules/nanhe_ovo#g" \
+        -e "s#/data/adb/nanhe_ovo#$D/data/adb/nanhe_ovo#g" \
+        -e "s#/sdcard#$D/sdcard#g" \
+        -e "s#/sys/#$D/sys/#g" \
+        "$MODULE/script/cpu_policy.sh" > "$D/data/adb/modules/nanhe_ovo/script/cpu_policy.sh"
     mkdir -p "$D/data/adb/modules/nanhe_ovo/config"
     cp "$MODULE/thread_skip.list" "$D/data/adb/modules/nanhe_ovo/thread_skip.list"
     # 运行时
     mkdir -p "$D/data/adb/nanhe_ovo"
+    printf '%s\n' sdm8g2 > "$D/data/adb/nanhe_ovo/device_config.txt"
     printf '%s\n' aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee > "$D/boot_id"
     # 系统包清单（apps 的兜底枚举来源）
     mkdir -p "$D/data/system"
@@ -204,15 +212,11 @@ hasnt "非 GPU devfreq 被过滤" "$OUT" "sramc"
 eq "当前模式" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="mode"{print $3}')" balance
 eq "调优默认开启" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="tune"{print $3}')" 开启
 eq "版本来自 module.prop" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="version"{print $3}')" "$(awk -F '=' '$1 == "version" {print $2; exit}' "$MODULE/module.prop")"
-eq "uperf 未运行" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="uperf"{print $3}')" 未运行
+eq "策略已接管" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="policy"{print $3}')" 已接管（表驱动）
 eq "新安装刷新率默认交给系统" "off" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="refresh_manage"{print $3}')"
 hasnt "SUSFS 不再进入状态上报" "$OUT" "$(printf 'info\tsusfs\t')"
 has "SUSFS 兼容函数仍保留" "$(cat "$MODULE/script/control.sh")" 'susfs_state() {'
 hasnt "SUSFS 探测不再被 status 调用" "$(cat "$MODULE/script/control.sh")" 'SUSFS_ST='
-: > "$FAKE/uperf.running"
-run_ctl status
-eq "uperf 运行中" "$(printf '%s\n' "$OUT" | awk -F'\t' '$2=="uperf"{print $3}')" 运行中
-rm -f "$FAKE/uperf.running"
 has "无表 GPU 行仍报告（模拟厂商锁频）" "$OUT" "gpu-1"
 
 printf '\n== 模式切换 ==\n'
@@ -637,9 +641,9 @@ eq "升级时保留旧配置备份" "old-config" "$(cat "$INST/sdcard/Android/yc
 
 printf '\n'
 make_install "$INST" gs201 arm64-v8a "$INST/mod"
-rm -f "$INST/mod/bin/uperf"
+rm -f "$INST/mod/cpu_profiles.tsv"
 run_install
-[ "$RC" != 0 ] && ok "缺少 uperf 二进制时拒绝安装" || bad "缺二进制仍安装"
+[ "$RC" != 0 ] && ok "缺少 CPU 表时拒绝安装" || bad "缺 CPU 表仍安装"
 has "提示安装包不完整" "$OUT" "安装包不完整"
 
 printf '\n'
@@ -661,47 +665,45 @@ make_install "$INST" gs201 arm64-v8a "$INST/mod"
 find "$INST/mod" -type f -exec chmod 0644 {} \;
 run_install
 eq "解包丢失可执行位仍安装成功" "$RC" 0
-eq "安装后引擎恢复 0755" "755" "$(stat -c %a "$INST/mod/bin/uperf")"
 eq "安装后 busybox 可执行" "yes" "$([ -x "$INST/mod/bin/busybox/busybox" ] && echo yes || echo no)"
+eq "安装后 CPU 策略脚本可执行" "yes" "$([ -x "$INST/mod/script/cpu_policy.sh" ] && echo yes || echo no)"
 eq "安装后线程引擎恢复 0755" "755" "$(stat -c %a "$INST/mod/bin/appopt/AppOpt")"
 eq "安装后线程引擎可执行" "yes" "$([ -x "$INST/mod/bin/appopt/AppOpt" ] && echo yes || echo no)"
 eq "安装后后端脚本可执行" "yes" "$([ -x "$INST/mod/script/control.sh" ] && echo yes || echo no)"
-hasnt "权限缺失不再误报缺少引擎" "$OUT" "缺少 bin/uperf"
 
 printf '\n'
 make_install "$INST" gs201 arm64-v8a "$INST/mod"
-: >"$INST/mod/bin/uperf"
+: >"$INST/mod/cpu_profiles.tsv"
 run_install
-[ "$RC" != 0 ] && ok "空引擎文件被拒绝" || bad "空引擎仍安装"
-has "提示引擎为空文件" "$OUT" "为空文件"
+[ "$RC" != 0 ] && ok "空 CPU 表被拒绝" || bad "空 CPU 表仍安装"
+has "提示安装包不完整" "$OUT" "安装包不完整"
 
+# 旧版分应用模板迁移：旧 * performance 换成新模板，非内置自定义包保留
 printf '\n'
 make_install "$INST" gs201 arm64-v8a "$INST/mod"
-mkdir -p "$INST/data/adb/modules/nanhe_ovo/bin"
-cp -a "$MODULE/bin/uperf" "$INST/data/adb/modules/nanhe_ovo/bin/uperf"
-rm -f "$INST/mod/bin/uperf"
+mkdir -p "$INST/sdcard/Android/yc/uperf"
+printf '%s\n' 'com.tencent.tmgp.sgame performance' '- powersave' '* performance' 'com.example.custom fast' > "$INST/sdcard/Android/yc/uperf/perapp_powermode.txt"
 run_install
-eq "解包丢引擎时从旧安装自愈" "$RC" 0
-has "自愈有提示" "$OUT" "已从旧安装恢复"
+has "旧模板默认规则已迁移为 balance" "$(cat "$INST/sdcard/Android/yc/uperf/perapp_powermode.txt")" '* balance'
+has "迁移后含三角洲 fast" "$(cat "$INST/sdcard/Android/yc/uperf/perapp_powermode.txt")" 'com.tencent.tmgp.dfm fast'
+has "自定义包规则保留" "$(cat "$INST/sdcard/Android/yc/uperf/perapp_powermode.txt")" 'com.example.custom fast'
+has "旧规则已备份" "yes" "$([ -f "$INST/sdcard/Android/yc/uperf/perapp_powermode.txt.bak" ] && echo yes || echo no)"
 
+# 自研 CPU 策略独立运行：gs201 powersave 上限应压到真实 OPP
 printf '\n'
 make_install "$INST" gs201 arm64-v8a "$INST/mod"
-# ZIPFILE 自愈测试的 zip 从安装桩目录打包（AppOpt 已被替换为桩，避免真机 ELF 在宿主机上无法执行）
-python3 -c 'import os,sys,zipfile
-root,out=sys.argv[1],sys.argv[2]
-z=zipfile.ZipFile(out,"w",zipfile.ZIP_DEFLATED)
-for d,_,fs in os.walk(root):
-    for f in fs:
-        p=os.path.join(d,f); rel=os.path.relpath(p,root)
-        zi=zipfile.ZipInfo(rel,date_time=(1980,1,1,0,0,0))
-        zi.compress_type=zipfile.ZIP_DEFLATED
-        z.writestr(zi,open(p,"rb").read())
-z.close()' "$INST/mod" "$WORK/pkg.zip"
-rm -f "$INST/mod/bin/uperf"
-OUT=$(PATH="$INST/bin:$HOST_PATH" MODPATH="$INST/mod" ZIPFILE="$WORK/pkg.zip" "$SH" "$INST/mod/customize.sh" 2>&1); RC=$?
-eq "解包丢引擎时能从 ZIPFILE 自愈" "$RC" 0
-has "重新解包有提示" "$OUT" "从 zip 重新解出"
-eq "自愈后引擎可执行" "yes" "$([ -x "$INST/mod/bin/uperf" ] && echo yes || echo no)"
+run_install
+printf '%s\n' gs201 > "$INST/data/adb/nanhe_ovo/device_config.txt"
+for p in 0 1; do
+    d="$INST/sys/devices/system/cpu/cpufreq/policy$p"
+    printf '%s\n' 300000 > "$d/scaling_min_freq"
+    printf '%s\n' 2800000 > "$d/scaling_max_freq"
+done
+printf '%s\n' '300000 600000 1200000 1800000' > "$INST/sys/devices/system/cpu/cpufreq/policy0/scaling_available_frequencies"
+printf '%s\n' '710400 1200000 1800000 2400000 2803200' > "$INST/sys/devices/system/cpu/cpufreq/policy1/scaling_available_frequencies"
+NANHE_SYSFS="$INST/sys/" NANHE_RUNTIME="$INST/data/adb/nanhe_ovo" NANHE_USER_PATH="$INST/sdcard/Android/yc/uperf" sh "$INST/mod/script/cpu_policy.sh" apply powersave >/dev/null 2>&1
+eq "cpu_policy 写入 policy0 powersave 上限" "600000" "$(cat "$INST/sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq")"
+eq "cpu_policy 写入 policy1 powersave 上限" "710400" "$(cat "$INST/sys/devices/system/cpu/cpufreq/policy1/scaling_max_freq")"
 
 ########################################
 # 4. 运行日志

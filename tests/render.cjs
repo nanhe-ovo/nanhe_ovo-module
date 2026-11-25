@@ -217,7 +217,7 @@ class Cdp {
       '标题正确': checks.title === '设备总览',
       '底部导航为悬浮胶囊': checks.nav.position === 'fixed' && parseFloat(checks.nav.bottom) >= 8 && parseFloat(checks.nav.radius) >= 28,
       '底部导航不贴满屏宽': parseFloat(checks.nav.width) <= 430,
-      '底栏是液态玻璃（有背景模糊）': String(checks.nav.blur).indexOf('blur(') >= 0,
+      '底栏是实色 Miuix 胶囊（无背景模糊）': !String(checks.nav.blur).includes('blur('),
       '其它卡片为实色 Miuix 白卡（不铺玻璃）': !String(checks.glass).includes('blur('),
       '首页显示绿色「工作中」状态卡': checks.statusState === 'run' && checks.statusTitle === '工作中',
       '状态卡统计数字来自后端': checks.statRules !== '0' && checks.statDevices === '4',
@@ -294,14 +294,7 @@ class Cdp {
     results.push((unknown.note.indexOf('开启管理后可尝试') >= 0 ? 'PASS ' : 'FAIL ') +
       '读不到档位表时说明需开启管理后尝试' + (unknown.note.indexOf('开启管理后可尝试') >= 0 ? '' : '（实际 ' + JSON.stringify(unknown.note) + '）'));
 
-    // 底栏玻璃的交互：高光跟随指针（只有底栏保留玻璃）
-    const glow = await cdp.evaluate(`(() => {
-      const nav = document.querySelector('.bottom-nav');
-      const box = nav.getBoundingClientRect();
-      const before = getComputedStyle(nav).getPropertyValue('--spec-x').trim();
-      nav.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: box.left + box.width * 0.2, clientY: box.top + box.height * 0.5 }));
-      return { before, after: getComputedStyle(nav).getPropertyValue('--spec-x').trim(), box: [box.left, box.top], width: box.width };
-    })()`);
+    // 底栏已改为实色 Miuix 胶囊：只验证按压缩放，不再有高光/折射参数。
     await cdp.evaluate(`(() => {
       const card = document.querySelector('#page-frequency .card');
       const box = card.getBoundingClientRect();
@@ -323,35 +316,31 @@ class Cdp {
     })()`);
     const released = await cdp.evaluate(`(() => {
       const card = document.querySelector('#page-frequency .card');
-      return { pressing: card.classList.contains('pressing'), refract: getComputedStyle(document.documentElement).getPropertyValue('--refract-h').trim(), chroma: getComputedStyle(document.documentElement).getPropertyValue('--chroma-a').trim() };
+      return { pressing: card.classList.contains('pressing') };
     })()`);
-    results.push((glow.after === '20.0%' && glow.before !== glow.after ? 'PASS ' : 'FAIL ') +
-      '高光位置跟随指针' + (glow.after === '20.0%' ? '' : '（实际 before=' + glow.before + ' after=' + glow.after + '）'));
     results.push((pressed.pressed && pressed.scaleA < 1 ? 'PASS ' : 'FAIL ') +
       '按下时收缩并带弹簧回弹' + (pressed.pressed && pressed.scaleA < 1 ? '' : '（实际 pressed=' + pressed.pressed + ' transform=' + pressed.transform + ' filter=' + pressed.filter + '）'));
     results.push((!released.pressing ? 'PASS ' : 'FAIL ') + '松开后移除按压缩放');
-    results.push((released.refract === '16px' && released.chroma.length > 0 ? 'PASS ' : 'FAIL ') +
-      '折射带厚度与色散参数已定义' + (released.refract === '16px' ? '' : '（实际 ' + released.refract + '）'));
 
-    // 底栏液态玻璃：镜片胶囊随页面切换滑到对应格；滚动时玻璃带倾斜/拉伸反馈
+    // 实色悬浮底栏：当前页用浅蓝胶囊高亮，且没有镜片/玻璃形变参数
     await cdp.evaluate(`(() => { location.hash = '#apps'; })()`);
     await sleep(240);
-    const lens = await cdp.evaluate(`(() => {
+    const navActive = await cdp.evaluate(`(() => {
       const nav = document.querySelector('.bottom-nav');
-      return { index: getComputedStyle(nav).getPropertyValue('--nav-index').trim(), left: document.querySelector('.nav-lens').getBoundingClientRect().left, navLeft: nav.getBoundingClientRect().left };
+      const active = nav.querySelector('a[aria-current=page]');
+      return {
+        hasLens: !!document.querySelector('.nav-lens'),
+        bg: getComputedStyle(active).backgroundColor,
+        radius: getComputedStyle(active).borderRadius,
+        idx: getComputedStyle(nav).getPropertyValue('--nav-index').trim(),
+        skew: getComputedStyle(nav).getPropertyValue('--nav-skew').trim(),
+        stretch: getComputedStyle(nav).getPropertyValue('--nav-stretch').trim()
+      };
     })()`);
-    await cdp.evaluate(`(() => { location.hash = '#frequency'; window.scrollTo(0, 0); })()`);
-    await sleep(200);
-    await cdp.evaluate(`(() => { window.scrollTo(0, 640); })()`);
-    await sleep(200);
-    const liquid = await cdp.evaluate(`(() => {
-      const nav = document.querySelector('.bottom-nav');
-      return { skew: getComputedStyle(nav).getPropertyValue('--nav-skew').trim(), stretch: getComputedStyle(nav).getPropertyValue('--nav-stretch').trim(), spec: getComputedStyle(nav).getPropertyValue('--spec-x').trim() };
-    })()`);
-    results.push((lens.index === '2' && lens.left > lens.navLeft ? 'PASS ' : 'FAIL ') +
-      '底栏镜片胶囊跟随当前页滑动' + (lens.index === '2' ? '' : '（实际 --nav-index=' + lens.index + '）'));
-    results.push(((liquid.skew !== '0deg' && liquid.skew !== '') || parseFloat(liquid.stretch) !== 1 ? 'PASS ' : 'FAIL ') +
-      '底栏玻璃在滚动时产生形变' + (liquid.skew !== '0deg' ? '' : '（实际 skew=' + liquid.skew + ' stretch=' + liquid.stretch + '）'));
+    results.push((!navActive.hasLens && navActive.bg !== 'rgba(0, 0, 0, 0)' && navActive.radius !== '0px' ? 'PASS ' : 'FAIL ') +
+      '底栏当前页为浅蓝实色胶囊' + (navActive.bg === 'rgba(0, 0, 0, 0)' ? '（实际 ' + navActive.bg + '）' : ''));
+    results.push((navActive.idx === '' && navActive.skew === '' && navActive.stretch === '' ? 'PASS ' : 'FAIL ') +
+      '底栏不再设置镜片索引与玻璃形变' + (navActive.idx === '' ? '' : '（实际 --nav-index=' + navActive.idx + ' skew=' + navActive.skew + ' stretch=' + navActive.stretch + '）'));
   } catch (error) {
     results.push('FAIL ' + error.message);
   } finally {

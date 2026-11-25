@@ -1,5 +1,20 @@
 # 更新日志
 
+## v1.11.0（2026-11-25）
+
+这一版先把“调度到底有没有生效”拆开：去掉内嵌 uperf 二进制，保留 JSON 功耗配置，用构建期生成的频率表驱动自研 CPU 策略；同时修掉旧版分应用规则在覆盖升级后不迁移的问题。
+
+- **去除内嵌 Uperf**：删除 `bin/uperf` 与 `libuperf.sh`，`initsvc.sh` 不再启动 uperf；`uperf.json` / `perapp_powermode.txt` 只作为配置数据保留，不再依赖 inotify 决策。`NOTICE` 保留上游 Apache-2.0 声明。
+- **自研 CPU 策略层**：新增 `script/cpu_policy.sh`，读取 `cpu_profiles.tsv`，按 `scaling_available_frequencies` 选不超过目标值的最高真实 OPP 写 `scaling_max_freq`；`crazy` 的 0 表示运行期取 `cpuinfo_max_freq`，不再把 `999` 写进节点。`template` 无功耗模型时按硬件峰值 60%–100% 兜底。
+- **构建期生成表**：新增 `tools/gen_cpu_profiles.py`，从 111 份 JSON 的 `powerModel` 与模式功率墙按 \(P \propto f^2\) 生成每簇上限；`tools/build.py` 每次打包前重生成并校验，表缺失、模式不全、仍带 `bin/uperf` 都直接失败。
+- **轻量前台检测**：`game_watch.sh` 从每 2 秒两次 `dumpsys` 改为每 4 秒扫 top-app cpuset 的 `/proc/<pid>/cmdline`；识别到 `game.list` 游戏才切 `fast`，退出回 `balance`，灭屏切 `powersave`。top-app 不可读时才降级为最多 20 秒一次 `dumpsys`。
+- **分应用规则迁移**：`customize.sh` 检测旧版 `* performance` 模板，备份后合并为新模板（48 款游戏 `fast`、`- powersave`、`* balance`），保留不在新模板中的自定义包；解决覆盖升级后三角洲仍落到旧 6W 预算的问题。
+- **温控基线重置**：`thermal_guard.sh` 检测到模式变化时丢弃上一模式的旧上限，避免 `fast` 被 `balance` 的旧基线夹住；温控分档与回差逻辑保留。
+- **WebUI 悬浮底栏**：底栏改为离底边 16px 的实色 Miuix 胶囊，当前页浅蓝高亮；移除液态玻璃、`backdrop-filter`、折射/色散/镜片滑动与滚动形变，卡片仍保持实色大圆角。
+- **版本**：`v1.11.0` / `202611257`。
+
+> 帧率记录（Redmi K Pad / D9400 / 三角洲 6m8s）：平均 134.5 FPS、1% Low 85、5% Low 109.4、jank 0.94%，四次大卡顿约间隔 92–94 秒。该记录同时显示 CPU 常压 1.6/2.0GHz、CPU 70–100%、GPU 700–900MHz、峰值约 90°C。旧版日志中游戏开始没有切 `fast`，说明前台链路没有生效；本版先修链路与旧规则迁移，但 92 秒周期卡顿仍需 `game_watch.log`、`thermal_guard.log` 与 `logcat` 继续确认是否为 ACE 扫描或系统后台任务。
+
 ## v1.10.0（2026-11-25）
 
 这次不是继续放宽功率墙，而是把“游戏前台才拉起调度、退场就回落”的动态链路补上，并修掉三处会让帧率忽高忽低的默认配置。

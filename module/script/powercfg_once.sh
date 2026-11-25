@@ -32,7 +32,7 @@ unify_cgroup() {
     # unused
     rmdir /dev/cpuset/foreground/boost
 
-    # work with uperf/ContextScheduler
+    # work with cpu_policy/ContextScheduler
     change_task_cgroup "surfaceflinger" "" "cpuset"
     change_task_cgroup "system_server" "foreground" "cpuset"
     change_task_cgroup "netd|allocator" "foreground" "cpuset"
@@ -286,7 +286,7 @@ if [ "$(is_mtk)" == "true" ]; then
         done
 
         #force use ppm
-        echo "force uperf use PPM"
+        echo "force vendor DVFS use PPM"
         lock_val "0 3200000" /proc/ppm/policy/hard_userlimit_max_cpu_freq
         lock_val "0 3200000" /proc/ppm/policy/hard_userlimit_min_cpu_freq
         lock_val "1 3200000" /proc/ppm/policy/hard_userlimit_max_cpu_freq

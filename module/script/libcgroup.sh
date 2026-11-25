@@ -26,7 +26,7 @@ ps_ret=""
 # CPUMASK_MID="73"
 # CPUMASK_HIGH="f0"
 # CPUID_LOW="1-3"
-# CPUID_MID="0-1,4-7" # uperf set 0-1/0-6 for foreground, cpu7 reserved for launcher
+# CPUID_MID="0-1,4-7" # foreground cpuset 0-1/0-6, cpu7 reserved for launcher
 # CPUID_HIGH="4-7"
 
 # $1:task_name $2:cgroup_name $3:"cpuset"/"stune"

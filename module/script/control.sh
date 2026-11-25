@@ -94,7 +94,7 @@ read_num() {
     is_uint "$RN" || return 1
     printf '%s' "$RN"
 }
-# 模式名只允许小写标识符；是否存在由 uperf.json 的 presets 决定。
+# 模式名只允许小写标识符；是否存在由 uperf.json（仅作配置数据）的 presets 决定。
 valid_mode() {
     case "$1" in ''|*[!a-z0-9_]*) return 1;; esac
     case "$1" in [a-z]*) ;; *) return 1;; esac
@@ -339,7 +339,7 @@ cmd_restore() {
     printf 'ok\trestore\n'
 }
 
-# 完整递归下降校验 uperf.json。模式名只能是 root.presets 的直接子键，
+# 完整递归下降校验策略配置 uperf.json。模式名只能是 root.presets 的直接子键，
 # 字符串、注释或更深层的同名键都不能授权模式。
 # 参数为空时输出合法的 presets 键（用于 WebUI 的模式列表）。
 config_scan() {
@@ -387,11 +387,11 @@ config_presets() {
     printf '%s' "$PS" | sort -u | awk 'BEGIN{s=""} {s=s (s==""?"":" ") $0} END{printf "%s",s}'
 }
 
-# 保持 inode 的写入：同目录暂存文件写完后再覆盖目标，使 uperf 的 inotify 生效。
+# 保持 inode 的写入：同目录暂存文件写完后再覆盖目标；配置仍可被外部工具原地更新。
 # 每次提交前都留一份私有回滚副本和持久 .bak。
 commit_text() {
     CT_DEST=$1 CT_SOURCE=$2
-    [ -d "$UPERF" ] || { err 'uperf directory missing'; return 1; }
+    [ -d "$UPERF" ] || { err 'strategy config directory missing'; return 1; }
     [ ! -L "$CT_DEST" ] && [ ! -L "$CT_DEST.bak" ] || { err 'symlink destination/backup refused'; return 1; }
     if [ -e "$CT_DEST" ] && [ ! -f "$CT_DEST" ]; then err 'destination is not a regular file'; return 1; fi
     CT_TMP=$(mktemp "$UPERF/.nanhe.XXXXXX") || { err 'cannot create same-directory temp'; return 1; }
@@ -423,7 +423,7 @@ commit_text() {
 cmd_rule() {
     valid_package "$1" || { err 'invalid package selector'; return 1; }
     if [ "$2" != delete ]; then
-        config_has_mode "$2" || { err 'mode absent from local uperf.json presets'; return 1; }
+        config_has_mode "$2" || { err 'mode absent from local strategy config presets'; return 1; }
     fi
     RULES="$UPERF/perapp_powermode.txt"
     [ ! -L "$RULES" ] || { err 'rules symlink refused'; return 1; }
@@ -519,16 +519,25 @@ apply_crazy_boost() {
     return 0
 }
 cmd_mode() {
-    config_has_mode "$1" || { err 'mode absent from local uperf.json presets'; return 1; }
+    config_has_mode "$1" || { err 'mode absent from local strategy config presets'; return 1; }
     CM_PREV=$(cat "$UPERF/cur_powermode.txt" 2>/dev/null)
     valid_mode "$CM_PREV" || CM_PREV=
     printf '%s\n' "$1" > "$WORK/text.new" || return 1
     commit_text "$UPERF/cur_powermode.txt" "$WORK/text.new" || return 1
     if [ "$1" = crazy ]; then
+        # cpu_policy 先把标准节点推到表内最高档；apply_crazy_boost 再处理
+        # 厂商拒绝标准节点时的 MTK PPM / cpufreq_limits 兜底。
+        sh "$MODULE/script/cpu_policy.sh" apply "$1" >/dev/null 2>&1 ||
+            log_write warn policy "CPU 策略应用失败：$1"
         apply_crazy_boost || :
     elif [ "$CM_PREV" = crazy ]; then
-        # 离开超频模式：恢复本次开机的频率基线（无基线则无事可做）
+        # 离开超频模式：恢复本次开机的频率基线（无基线则无事可做），再按新模式压上限。
         [ -f "$BASELINE" ] && cmd_restore || :
+        sh "$MODULE/script/cpu_policy.sh" apply "$1" >/dev/null 2>&1 ||
+            log_write warn policy "CPU 策略应用失败：$1"
+    else
+        sh "$MODULE/script/cpu_policy.sh" apply "$1" >/dev/null 2>&1 ||
+            log_write warn policy "CPU 策略应用失败：$1"
     fi
     sh "$MODULE/script/gpu_profile.sh" "$1" >/dev/null 2>&1 ||
         log_write warn gpu 'GPU 分模式窗口应用失败，已保留当前节点值'
@@ -1086,6 +1095,16 @@ cmd_threadrule() {
     thread_gen_conf "$TH_CUR" || { err 'thread config regenerate failed'; return 1; }
     printf 'ok\tthreadrule\t%s\t%s\n' "$1" "$2"
 }
+# 自研策略没有常驻进程，状态看「表 + 平台配置」是否可接管，而不是 pidof uperf。
+cpu_policy_state() {
+    CP_SOC=$(device_config)
+    CP_TABLE="$MODULE/cpu_profiles.tsv"
+    [ -f "$CP_TABLE" ] || { printf '未接管'; return 0; }
+    case "$CP_SOC" in template|unknown) printf '未接管'; return 0;; esac
+    CP_ROWS=$(awk -F '\t' -v s="$CP_SOC" '$1 == s && NF >= 5 { n++ } END { print n + 0 }' "$CP_TABLE" 2>/dev/null)
+    if [ "$CP_ROWS" -gt 0 ] 2>/dev/null; then printf '已接管（表驱动）'; else printf '未接管'; fi
+}
+
 cmd_status() {
     discover
     # 首次读取状态时尽力落一份开机基线：节点可读就记录，只读/读不到则跳过，
@@ -1103,11 +1122,7 @@ cmd_status() {
     printf 'info\tmode\t%s\n' "$CM"
     PM="$(config_presets)" || PM=
     printf 'info\tmodes\t%s\n' "$PM"
-    UP=unknown
-    if command -v pidof >/dev/null 2>&1; then
-        if pidof uperf >/dev/null 2>&1; then UP=运行中; else UP=未运行; fi
-    fi
-    printf 'info\tuperf\t%s\n' "$UP"
+    printf 'info\tpolicy\t%s\n' "$(cpu_policy_state)"
     printf 'info\tthread\t%s\n' "$(thread_report)"
     printf 'info\tthread_manage\t%s\n' "$(thread_manage_state)"
     printf 'info\tthread_profile\t%s\n' "$(thread_profile)"
@@ -1128,7 +1143,7 @@ cmd_status() {
     [ -n "$RT_TABLE" ] || log_once refresh-table warn refresh '未读到刷新率档位表：dumpsys display 与 SurfaceFlinger 都没有给出可用档位，已放开全部档位供尝试'
     [ -n "$RT_RATE" ] || log_once refresh-current warn refresh '读不到当前刷新率（SurfaceFlinger 与 peak_refresh_rate 都没有有效值）'
     [ "$BS" = 可用 ] || log_once baseline warn boot '本次开机没有生成频率基线，restore 将不可用'
-    [ -f "$UPERF/uperf.json" ] || log_once uperf-config warn config '没有找到 uperf.json，模式与应用规则不可用'
+    [ -f "$UPERF/uperf.json" ] || log_once policy-config warn config '没有找到策略配置 uperf.json，模式与应用规则不可用'
     while IFS="$(printf '\t')" read -r ST_ID ST_PATH ST_LABEL ST_UNIT; do
         load_device "$ST_ID" || continue
         ST_MIN=$(read_num "$DEVICE_PATH/$MIN_NODE") || ST_MIN=unknown

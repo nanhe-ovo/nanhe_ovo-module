@@ -5,8 +5,8 @@
 
 MODDIR=${0%/*}
 
-# 解包时可能丢失可执行位：开机早期先补一次，避免 service.sh 阶段引擎起不来
-chmod 0755 "$MODDIR/bin/uperf" "$MODDIR/bin/busybox/busybox" "$MODDIR"/bin/appopt/AppOpt "$MODDIR"/bin/appopt/AppOpt-ebpf "$MODDIR"/script/*.sh 2>/dev/null
+# 解包时可能丢失可执行位：开机早期先补一次，避免 service.sh 阶段线程引擎起不来
+chmod 0755 "$MODDIR/bin/busybox/busybox" "$MODDIR"/bin/appopt/AppOpt "$MODDIR"/bin/appopt/AppOpt-ebpf "$MODDIR"/script/*.sh 2>/dev/null
 
 # 本模块不加载、不卸载任何内核模块，也不写 /proc/kallsyms / kptr_restrict / /proc/susfs_*：
 # SUSFS Guard 之类 LKM 的加载窗口完全不受这里影响。

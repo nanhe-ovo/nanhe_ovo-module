@@ -1,6 +1,6 @@
 #!/system/bin/sh
-# 开机服务：等待系统启动完成并解锁后启动 uperf 引擎。
-# 启动流程沿用 Uperf-Game-Turbo（Apache-2.0）。
+# 开机服务：等待系统启动完成并解锁后应用 CPU 策略。
+# 启动骨架沿用 Uperf-Game-Turbo（Apache-2.0），v1.11.0 起不再启动 uperf 二进制。
 
 MODDIR=${0%/*}
 

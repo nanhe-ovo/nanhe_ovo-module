@@ -149,11 +149,17 @@ restore_base() {
 
 run_guard() {
     printf '%s\n' "$$" > "$PIDFILE" 2>/dev/null
-    LEVEL=0 COOL=0
+    LEVEL=0 COOL=0 LAST_MODE=$(read_mode)
     trap 'restore_base; rm -f "$PIDFILE"; exit 0' TERM INT
     while :; do
         TEMP=$(soc_temp)
         MODE=$(read_mode)
+        # 模式切换后 cpu_policy 已重写上限；旧的温控基线属于上一个模式，
+        # 必须先丢弃并重新从当前模式的上限开始算，避免把 fast 夹在 balance 的旧基线上。
+        if [ "$MODE" != "$LAST_MODE" ]; then
+            restore_base
+            LEVEL=0 COOL=0 LAST_MODE=$MODE
+        fi
         if [ "$TEMP" -gt 0 ] 2>/dev/null; then
             TARGET=$(target_level "$MODE" "$TEMP")
             if [ "$TARGET" -gt "$LEVEL" ]; then

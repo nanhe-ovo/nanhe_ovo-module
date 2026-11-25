@@ -533,7 +533,10 @@
             "*": {
                 "cpu.latencyTime": 0.0,
                 "cpu.margin": 0.4,
-                "sysfs.ddrMin": "4266000000"
+                "sysfs.ddrMin": "4266000000",
+                "cpu.slowLimitPower": 3.0,
+                "cpu.fastLimitPower": 6.0,
+                "cpu.fastLimitCapacity": 24.0
             },
             "idle": {
                 "sched.scene": "idle",
@@ -563,7 +566,10 @@
             "*": {
                 "cpu.latencyTime": 0.0,
                 "cpu.margin": 0.4,
-                "sysfs.ddrMin": "5500000000"
+                "sysfs.ddrMin": "5500000000",
+                "cpu.slowLimitPower": 3.0,
+                "cpu.fastLimitPower": 6.0,
+                "cpu.fastLimitCapacity": 24.0
             },
             "idle": {
                 "sched.scene": "idle",

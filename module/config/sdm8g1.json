@@ -557,9 +557,9 @@
                 "sysfs.CPUllccmax": "818000000",
                 "sysfs.CPUddrmax": "818000000",
                 "cpu.latencyTime": 0.0,
-                "cpu.slowLimitPower": 10.0,
-                "cpu.fastLimitPower": 20.0,
-                "cpu.fastLimitCapacity": 360.0,
+                "cpu.slowLimitPower": 4.0,
+                "cpu.fastLimitPower": 8.0,
+                "cpu.fastLimitCapacity": 36.0,
                 "cpu.margin": 0.48
             },
             "idle": {
@@ -596,9 +596,9 @@
                 "sysfs.scaling_max7": "2841600",
                 "sysfs.scaling_max4": "2419200",
                 "cpu.latencyTime": 0.1,
-                "cpu.slowLimitPower": 999,
-                "cpu.fastLimitPower": 999,
-                "cpu.fastLimitCapacity": 999,
+                "cpu.slowLimitPower": 4.0,
+                "cpu.fastLimitPower": 8.0,
+                "cpu.fastLimitCapacity": 36.0,
                 "cpu.predictThd": 0.1,
                 "cpu.margin": 1,
                 "cpu.burst": 1

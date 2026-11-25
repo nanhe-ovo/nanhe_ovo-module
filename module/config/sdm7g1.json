@@ -541,9 +541,9 @@
         "performance": {
             "*": {
                 "cpu.latencyTime": 0.0,
-                "cpu.slowLimitPower": 10.0,
-                "cpu.fastLimitPower": 20.0,
-                "cpu.fastLimitCapacity": 360.0,
+                "cpu.slowLimitPower": 4.0,
+                "cpu.fastLimitPower": 8.0,
+                "cpu.fastLimitCapacity": 36.0,
                 "cpu.margin": 0.5
             },
             "idle": {
@@ -574,9 +574,9 @@
         "fast": {
             "*": {
                 "cpu.latencyTime": 0.1,
-                "cpu.slowLimitPower": 999,
-                "cpu.fastLimitPower": 999,
-                "cpu.fastLimitCapacity": 999,
+                "cpu.slowLimitPower": 4.0,
+                "cpu.fastLimitPower": 8.0,
+                "cpu.fastLimitCapacity": 36.0,
                 "cpu.predictThd": 0.1,
                 "cpu.margin": 1,
                 "cpu.burst": 1

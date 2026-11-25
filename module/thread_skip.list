@@ -1,0 +1,6 @@
+# AppOptR 线程规则跳过名单
+# 这些应用对 cpuset / sched_setaffinity / 线程枚举敏感，生成 active.conf 时整包剔除，
+# 只由 Uperf 的包级功率模式接管，不创建 cpuset、不绑定线程。
+# 三角洲行动（ACE 反作弊）在部分版本会枚举线程并校验亲和性，绑定后可能启动闪退。
+com.tencent.tmgp.dfm
+com.tencent.tmgp.dfm.ce

@@ -9,9 +9,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 MODULE = ROOT / "module"
 DIST = ROOT / "dist"
-STAMP = (2026, 11, 21, 0, 0, 0)
-VERSION = "v1.9.5"
-BUILD = "20261121"
+STAMP = (2026, 11, 25, 0, 0, 0)
+VERSION = "v1.10.0"
+BUILD = "20261125"
 ZIP_NAME = f"nanhe_ovo-{VERSION}-{BUILD}.zip"
 SRC_NAME = f"nanhe_ovo-src-{VERSION}.zip"
 
@@ -79,7 +79,7 @@ def write_zip(target: Path, entries):
 
 
 def check_profiles():
-    """配置门禁：fast 档不能弱于 performance 档，语义核规则不能以空掩码收尾。"""
+    """配置门禁：功率墙必须有限、fast 不弱于 performance、线程规则不能以空掩码收尾。"""
     import json
     problems = []
     for p in sorted((MODULE / "config").glob("*.json")):
@@ -87,16 +87,33 @@ def check_profiles():
         presets = data.get("presets") or {}
         fast = (presets.get("fast") or {}).get("*") or {}
         perf = (presets.get("performance") or {}).get("*") or {}
+        for mode, block in (("fast", fast), ("performance", perf)):
+            for key in ("cpu.slowLimitPower", "cpu.fastLimitPower", "cpu.fastLimitCapacity"):
+                if key not in block:
+                    problems.append(f"{p.name}: {mode} 缺少 {key}")
         if "cpu.fastLimitPower" not in fast or "cpu.fastLimitPower" not in perf:
             continue
         f = float(fast["cpu.fastLimitPower"])
         q = float(perf["cpu.fastLimitPower"])
         cap = float(fast.get("cpu.fastLimitCapacity") or 0)
-        # 999 表示不限制，等价于足够大
-        if f < q and f != 999:
+        ddr = fast.get("sysfs.ddrMin")
+        # 999 表示不限制，会让大核/DDR 先拉满再靠硬件硬夹，禁止再进包。
+        if f >= 999 or q >= 999:
+            problems.append(f"{p.name}: performance/fast 仍有无限制功率墙 999")
+        if f <= 0 or q <= 0:
+            problems.append(f"{p.name}: 功率墙必须大于 0")
+        if f < q:
             problems.append(f"{p.name}: fast 功率墙 {f} 低于 performance {q}")
-        if cap == 0 and f != 999:
+        if cap <= 0:
             problems.append(f"{p.name}: fast 算力容量为 0（会压制核心上线）")
+        if cap > 60:
+            problems.append(f"{p.name}: fast 算力容量 {cap} 过高（上限 60）")
+        if ddr is not None:
+            try:
+                if int(str(ddr)) > 5_500_000_000:
+                    problems.append(f"{p.name}: DDR 下限 {ddr} 超过 5.5GB/s")
+            except ValueError:
+                problems.append(f"{p.name}: DDR 下限不是整数")
     for p in sorted((MODULE / "appopt").glob("appopt_*.conf")):
         for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
             text = line.strip()
@@ -105,6 +122,8 @@ def check_profiles():
             body = text.split("=", 1)[1].split("{")[0].strip()
             if body == "":
                 problems.append(f"{p.name}:{i} 规则 spec 为空")
+    if not (MODULE / "thread_skip.list").is_file():
+        problems.append("缺少 thread_skip.list（ACE 跳过名单）")
     return problems
 
 

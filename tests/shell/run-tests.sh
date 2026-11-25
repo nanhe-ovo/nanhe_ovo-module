@@ -90,6 +90,8 @@ make_fixture() {
     mkdir -p "$D/data/adb/modules/nanhe_ovo"
     cp "$MODULE/module.prop" "$D/data/adb/modules/nanhe_ovo/module.prop"
     cp "$MODULE/game.list" "$D/data/adb/modules/nanhe_ovo/game.list"
+    mkdir -p "$D/data/adb/modules/nanhe_ovo/config"
+    cp "$MODULE/thread_skip.list" "$D/data/adb/modules/nanhe_ovo/thread_skip.list"
     # 运行时
     mkdir -p "$D/data/adb/nanhe_ovo"
     printf '%s\n' aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee > "$D/boot_id"
@@ -583,6 +585,7 @@ eq "平台配置名已记录" "$(cat "$INST/data/adb/nanhe_ovo/device_config.txt
 eq "分应用规则已就位" "same" "$(cmp -s "$INST/sdcard/Android/yc/uperf/perapp_powermode.txt" "$MODULE/config/perapp_powermode.txt" && echo same || echo diff)"
 eq "默认模式已写入" "$(cat "$INST/sdcard/Android/yc/uperf/cur_powermode.txt")" balance
 eq "安装后移除平台配置目录" "no" "$([ -d "$INST/mod/config" ] && echo yes || echo no)"
+eq "ACE 跳过名单保留在模块根" "yes" "$([ -f "$INST/mod/thread_skip.list" ] && echo yes || echo no)"
 has "安装提示包含 WebUI 指引" "$OUT" "打开 WebUI"
 
 printf '\n'
@@ -871,6 +874,9 @@ for p in powersave balance performance fast crazy; do
     [ -f "$MODULE/appopt/appopt_$p.conf" ] && ok "五档规则 $p 存在" || bad "缺少 appopt_$p.conf"
 done
 has "service.sh 拉起线程服务" "$(cat "$MODULE/service.sh")" "thread_svc.sh"
+has "service.sh 拉起前台动态调度" "$(cat "$MODULE/service.sh")" "game_watch.sh"
+has "service.sh 拉起温控闸门" "$(cat "$MODULE/service.sh")" "thermal_guard.sh"
+has "ACE 跳过名单随包分发" "$(cat "$MODULE/thread_skip.list")" "com.tencent.tmgp.dfm"
 has "uninstall.sh 清理线程引擎" "$(cat "$MODULE/uninstall.sh")" "/dev/cpuset/nanhe_opt"
 has "NOTICE 标注 AppOptR 出处" "$(cat "$MODULE/NOTICE")" "gitee.com/sutoliu/AppOptR"
 
@@ -891,6 +897,11 @@ eq "active.conf 已生成" "yes" "$([ -f "$THR/active.conf" ] && echo yes || ech
 has "档位规则并入 active.conf" "$(cat "$THR/active.conf")" "surfaceflinger=0-3,4-7"
 hasnt "active.conf 不再残留语义核名" "$(cat "$THR/active.conf")" "=hp-core"
 hasnt "active.conf 不再残留 e-core" "$(cat "$THR/active.conf")" "=e-core"
+hasnt "active.conf 不再残留 hp2-core" "$(cat "$THR/active.conf")" "=hp2-core"
+run_ctl mode fast
+has "fast 主线程展开为双大核" "$(cat "$THR/active.conf")" "UnityMain=6-7"
+has "fast 渲染线程展开为双大核" "$(cat "$THR/active.conf")" "RenderThread*=6-7"
+run_ctl mode balance
 i=0
 while [ ! -s "$FAKE/appopt.invoked" ] && [ "$i" -lt 20 ]; do i=$((i + 1)); sleep 0.1; done
 has "AppOpt 已被拉起" "$(cat "$FAKE/appopt.invoked" 2>/dev/null)" "-b nanhe_opt"
@@ -931,6 +942,17 @@ rm -f "$THR/user.conf"
 run_ctl threadrules
 eq "线程规则文件不存在时退出 0" "$RC" 0
 eq "空线程规则输出为空" "" "$OUT"
+
+printf '\n== ACE 游戏跳过线程绑定 ==\n'
+run_ctl threadrule com.tencent.tmgp.dfm game
+eq "三角洲绑定返回成功" "$RC" 0
+has "三角洲返回 skipped" "$OUT" "ok	threadrule	com.tencent.tmgp.dfm	game	skipped"
+has "三角洲提示 ACE 原因" "$ERR" "ACE 反作弊"
+hasnt "三角洲未写入 user.conf" "$(cat "$THR/user.conf" 2>/dev/null)" "com.tencent.tmgp.dfm"
+hasnt "三角洲未写入 active.conf" "$(cat "$THR/active.conf" 2>/dev/null)" "com.tencent.tmgp.dfm"
+run_ctl threadrule com.tencent.tmgp.dfm delete
+eq "三角洲删除规则成功" "$RC" 0
+has "删除返回 ok" "$OUT" "ok	threadrule	com.tencent.tmgp.dfm	delete"
 
 printf '\n== 拓扑展开（空掩码回归）==\n'
 topo_case() { # $1=名称 $2="freq:cpus" 列表 $3=期望 "ALL|BG|REND|MAIN|SPIRE"

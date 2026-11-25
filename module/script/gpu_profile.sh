@@ -1,6 +1,6 @@
 #!/system/bin/sh
-# 南何ovo · MTK Mali GPU 分模式频率窗口（v1.6.0）
-# 只使用设备真实 OPP 表与已有 devfreq 节点；不写死频点、不升压、不关闭温控。
+# 南何ovo · GPU 分模式频率窗口（MTK Mali + 骁龙 kgsl）
+# 只使用设备真实 OPP 表与已有 devfreq 节点；不写死频点、不升压、不关闭内核热控。
 
 RROOT=/data/adb/nanhe_ovo
 MODE=${1:-balance}
@@ -19,8 +19,92 @@ is_mtk_platform() {
     return 1
 }
 
+is_qualcomm_platform() {
+    [ -d /sys/class/kgsl/kgsl-3d0 ] || return 1
+    GP_PLATFORM=$(getprop ro.board.platform 2>/dev/null)
+    GP_HARDWARE=$(getprop ro.hardware 2>/dev/null)
+    case "$GP_PLATFORM $GP_HARDWARE" in
+        *qcom*|*QCOM*|*sdm*|*SDM*|*sm[0-9]*|*msm*|*MSM*) return 0;;
+    esac
+    # 部分厂商改写 ro.board.platform，kgsl 节点存在且不是 MTK 即按高通处理。
+    ! is_mtk_platform
+}
+
+# 从 OPP 表选不低于比例目标的最低档；用于避免 GPU 长期停在最低频。
+pick_floor() {
+    awk -v pct="$1" -v ceiling="$2" '
+        BEGIN { target = ceiling * pct / 100; pick = 0 }
+        {
+            for (i = 1; i <= NF; i++) {
+                f = $i + 0
+                if (f <= 0 || f > ceiling) continue
+                if (f >= target && (pick == 0 || f < pick)) pick = f
+            }
+        }
+        END { if (pick > 0) printf "%d", pick; else printf "%d", ceiling }
+    ' "$3"
+}
+
+apply_qualcomm() { # $1=mode
+    QDEV=/sys/class/kgsl/kgsl-3d0
+    QDF=$QDEV/devfreq
+    [ -d "$QDEV" ] || return 0
+    case "$1" in
+        powersave) QMAX=55 QMIN=25;;
+        balance) QMAX=65 QMIN=35;;
+        performance) QMAX=80 QMIN=50;;
+        fast) QMAX=90 QMIN=60;;
+        crazy) QMAX=100 QMIN=75;;
+        *) return 0;;
+    esac
+
+    QCEIL=
+    for QF in "$QDF/available_frequencies" "$QDEV/gpu_available_frequencies" "$QDEV/available_frequencies"; do
+        [ -r "$QF" ] || continue
+        QCEIL=$(awk '{ for (i = 1; i <= NF; i++) { f = $i + 0; if (f > max) max = f } } END { print max + 0 }' "$QF" 2>/dev/null)
+        case "$QCEIL" in ''|0) QCEIL=;; *) break;; esac
+    done
+    if [ -z "$QCEIL" ] && [ -r "$QDF/max_freq" ]; then
+        QCEIL=$(cat "$QDF/max_freq" 2>/dev/null)
+    fi
+    case "$QCEIL" in ''|*[!0-9]*) QCEIL=0;; esac
+
+    if [ "$QCEIL" -gt 0 ] 2>/dev/null && [ -r "$QDF/available_frequencies" ]; then
+        QCAP=$(pick_opp "$QMAX" "$QCEIL" "$QDF/available_frequencies")
+        QFLOOR=$(pick_floor "$QMIN" "$QCEIL" "$QDF/available_frequencies")
+        case "$QCAP$QFLOOR" in *[!0-9]*) ;; *)
+            [ "$QFLOOR" -gt "$QCAP" ] 2>/dev/null && QFLOOR=$QCAP
+            # 先写 min 再写 max，避免 min > max 被内核拒绝。
+            write_node "$QFLOOR" "$QDF/min_freq" >/dev/null 2>&1 || :
+            write_node "$QCAP" "$QDF/max_freq" >/dev/null 2>&1 || :
+            log "高通 GPU 窗口：min=$QFLOOR max=$QCAP（$1）"
+        ;; esac
+    fi
+
+    # kgsl pwrlevel 下限：数值越小频率越高。只抬下限，不把默认档钉在最低档。
+    QNUM=$(cat "$QDEV/num_pwrlevels" 2>/dev/null)
+    case "$QNUM" in ''|*[!0-9]*) QNUM=0;; esac
+    if [ "$QNUM" -gt 0 ] 2>/dev/null; then
+        case "$1" in
+            powersave) QFLOOR_LVL=$((QNUM - 1));;
+            balance) QFLOOR_LVL=$((QNUM - 2));;
+            performance) QFLOOR_LVL=$((QNUM - 3));;
+            fast) QFLOOR_LVL=$((QNUM - 4));;
+            crazy) QFLOOR_LVL=1;;
+            *) QFLOOR_LVL=$((QNUM - 1));;
+        esac
+        [ "$QFLOOR_LVL" -lt 0 ] && QFLOOR_LVL=0
+        [ "$QFLOOR_LVL" -ge "$QNUM" ] && QFLOOR_LVL=$((QNUM - 1))
+        write_node "$QFLOOR_LVL" "$QDEV/min_pwrlevel" >/dev/null 2>&1 || :
+        write_node "$QFLOOR_LVL" "$QDEV/default_pwrlevel" >/dev/null 2>&1 || :
+    fi
+    # 允许内核热控介入；不再把 kgsl throttling 写成 0。
+    write_node 1 "$QDEV/throttling" >/dev/null 2>&1 || :
+}
+
 write_node() {
     [ -f "$2" ] && [ ! -L "$2" ] || return 1
+    chmod 0666 "$2" 2>/dev/null || :
     printf '%s\n' "$1" > "$2" 2>/dev/null || return 1
     return 0
 }
@@ -104,8 +188,13 @@ apply_device() {
     write_node 32 "$GP_DEV/polling_interval" || :
 }
 
-is_mtk_platform || exit 0
 case "$MODE" in powersave|balance|performance|fast|crazy) ;; *) exit 0;; esac
+
+if is_qualcomm_platform; then
+    apply_qualcomm "$MODE"
+    exit 0
+fi
+is_mtk_platform || exit 0
 GP_N=0
 for GP_CLASS in /sys/class/devfreq/*; do
     [ -d "$GP_CLASS" ] || continue

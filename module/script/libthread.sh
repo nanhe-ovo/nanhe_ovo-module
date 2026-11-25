@@ -8,10 +8,12 @@ THREAD_ACTIVE=$THREAD_ROOT/active.conf
 THREAD_USER=$THREAD_ROOT/user.conf
 THREAD_PROFILE=$THREAD_ROOT/profile.txt
 THREAD_DISABLED=/data/adb/nanhe_ovo/thread_disabled
+THREAD_SKIP=/data/adb/modules/nanhe_ovo/thread_skip.list
 APPOpt_BIN=/data/adb/modules/nanhe_ovo/bin/appopt/AppOpt
 THREAD_CPU_SET=nanhe_opt
 
-# 拓扑展开：语义核（e/p/hp/all）必须落成确定的数字掩码再交给引擎。
+# 拓扑展开：语义核（e/p/hp/hp2/all）必须落成确定的数字掩码再交给引擎。
+# hp-core = 最高频簇最后一颗（单核）；hp2-core = 最高频簇最后两颗（双核）。
 # 引擎在 2 簇与单簇平台上会把 p-core / hp-core 解析成空集，空集会连带清空
 # 基础 cpuset 的 cpus，游戏线程被塞进无 CPU 的 cgroup，表现为启动卡死/闪退。
 TOPO_ALL=${TOPO_ALL:-0-7}
@@ -32,7 +34,7 @@ thread_topo() {
 
 # 读 stdin，把规则行右侧的语义核展开为数字掩码；空结果回退全核。
 thread_expand_stream() {
-    awk -v E="$TOPO_BG" -v P="$TOPO_REND" -v H="$TOPO_MAIN" -v A="$TOPO_ALL" '
+    awk -v E="$TOPO_BG" -v P="$TOPO_REND" -v H="$TOPO_MAIN" -v H2="$TOPO_MAIN2" -v A="$TOPO_ALL" '
     function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
     {
         line = $0
@@ -53,6 +55,7 @@ thread_expand_stream() {
             if (p == "e-core") p = E
             else if (p == "p-core") p = P
             else if (p == "hp-core") p = H
+            else if (p == "hp2-core") p = H2
             else if (p == "all-core") p = A
             if (p == "") { bad = 1; break }
             out = out (i > 1 ? "," : "") p
@@ -105,6 +108,52 @@ thread_gen_conf() { # $1: mode
     thread_expand_stream < "$TG_SRC" > "$THREAD_ROOT/.active.tmp" || { rm -f "$THREAD_ROOT/.active.tmp"; return 1; }
     if [ -f "$THREAD_USER" ]; then
         thread_expand_stream < "$THREAD_USER" >> "$THREAD_ROOT/.active.tmp" || { rm -f "$THREAD_ROOT/.active.tmp"; return 1; }
+    fi
+    # ACE 等反作弊游戏对 cpuset / 线程亲和性敏感：跳过名单中的包不生成任何
+    # AppOptR 规则，避免包级 cpuset 或线程绑定触发闪退。
+    if [ -f "$THREAD_SKIP" ] && [ ! -L "$THREAD_SKIP" ]; then
+        awk -v skipfile="$THREAD_SKIP" '
+            BEGIN {
+                while ((getline line < skipfile) > 0) {
+                    sub(/#.*/, "", line)
+                    gsub(/^[ \t]+|[ \t]+$/, "", line)
+                    if (line != "") skip[line] = 1
+                }
+            }
+            {
+                line = $0
+                # 用户绑定块：块头带 nanhe_threadrule 标记，整块跳过。
+                if (line ~ /^# nanhe_threadrule pkg=/) {
+                    pkg = line
+                    sub(/^# nanhe_threadrule pkg=/, "", pkg)
+                    sub(/[ \t].*/, "", pkg)
+                    if (pkg in skip) { inblock = 1; next }
+                    print
+                    next
+                }
+                # 块内注释也跟随整块跳过，不能漏到下一块的规则里。
+                if (line ~ /^[ \t]*#/) {
+                    if (!inblock) print
+                    next
+                }
+                if (inblock) {
+                    if (line ~ /^[ \t]*\}/) inblock = 0
+                    next
+                }
+                eq = index(line, "=")
+                if (eq > 0) {
+                    pkg = substr(line, 1, eq - 1)
+                    gsub(/^[ \t]+|[ \t]+$/, "", pkg)
+                    if (pkg in skip) {
+                        if (line ~ /\{/) inblock = 1
+                        next
+                    }
+                }
+                print
+            }
+        ' "$THREAD_ROOT/.active.tmp" > "$THREAD_ROOT/.active.filt" || { rm -f "$THREAD_ROOT/.active.tmp" "$THREAD_ROOT/.active.filt"; return 1; }
+        cat "$THREAD_ROOT/.active.filt" > "$THREAD_ROOT/.active.tmp" || { rm -f "$THREAD_ROOT/.active.tmp" "$THREAD_ROOT/.active.filt"; return 1; }
+        rm -f "$THREAD_ROOT/.active.filt"
     fi
     cat "$THREAD_ROOT/.active.tmp" > "$THREAD_ACTIVE" || { rm -f "$THREAD_ROOT/.active.tmp"; return 1; }
     rm -f "$THREAD_ROOT/.active.tmp"

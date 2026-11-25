@@ -554,9 +554,9 @@
                 "sysfs.llccddrRC0": "450",
                 "sysfs.llccddrRC4": "650",
                 "cpu.latencyTime": 0.0,
-                "cpu.slowLimitPower": 999.0,
-                "cpu.fastLimitPower": 999.0,
-                "cpu.fastLimitCapacity": 999.0,
+                "cpu.slowLimitPower": 2.5,
+                "cpu.fastLimitPower": 5.0,
+                "cpu.fastLimitCapacity": 16.0,
                 "cpu.margin": 0.32,
                 "cpu.burst": 0.34
             },
@@ -593,10 +593,11 @@
                 "sysfs.llccddrRC0": "450",
                 "sysfs.llccddrRC4": "650",
                 "cpu.latencyTime": 0.0,
-                "cpu.slowLimitPower": 999.0,
-                "cpu.fastLimitPower": 999.0,
-                "cpu.fastLimitCapacity": 999.0,
-                "cpu.burst": 1.0
+                "cpu.slowLimitPower": 2.5,
+                "cpu.fastLimitPower": 5.0,
+                "cpu.fastLimitCapacity": 16.0,
+                "cpu.burst": 1.0,
+                "cpu.margin": 0.4
             },
             "idle": {
                 "sched.scene": "touch"

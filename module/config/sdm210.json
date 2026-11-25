@@ -448,11 +448,10 @@
         "sysfs.llccddrRC0": "450",
         "sysfs.llccddrRC4": "650",
         "cpu.latencyTime": 0.0,
-        "cpu.slowLimitPower": 999.0,
-        "cpu.fastLimitPower": 999.0,
-        "cpu.fastLimitCapacity": 999.0,
-                "cpu.margin": 1,
-
+        "cpu.slowLimitPower": 2.5,
+        "cpu.fastLimitPower": 5.0,
+        "cpu.fastLimitCapacity": 16.0,
+        "cpu.margin": 1,
         "cpu.burst": 1.0
       },
       "idle": {
@@ -474,7 +473,7 @@
         "sched.scene": "boost"
       }
     },
-        "powersave": {
+    "powersave": {
       "*": {
         "cpu.latencyTime": 0.4,
         "cpu.slowLimitPower": 1.0,
@@ -522,11 +521,10 @@
         "sysfs.llccddrRC0": "450",
         "sysfs.llccddrRC4": "650",
         "cpu.latencyTime": 0.0,
-        "cpu.slowLimitPower": 999.0,
-        "cpu.fastLimitPower": 999.0,
-        "cpu.fastLimitCapacity": 999.0,
-                "cpu.margin": 1,
-
+        "cpu.slowLimitPower": 2.5,
+        "cpu.fastLimitPower": 5.0,
+        "cpu.fastLimitCapacity": 16.0,
+        "cpu.margin": 1,
         "cpu.burst": 1.0
       },
       "idle": {

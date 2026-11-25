@@ -551,9 +551,9 @@
         "performance": {
             "*": {
                 "cpu.latencyTime": 0,
-                "cpu.slowLimitPower": 6,
-                "cpu.fastLimitPower": 16,
-                "cpu.fastLimitCapacity": 360,
+                "cpu.slowLimitPower": 2.5,
+                "cpu.fastLimitPower": 5.0,
+                "cpu.fastLimitCapacity": 16.0,
                 "cpu.fastLimitRecoverScale": 9,
                 "cpu.margin": 0.6,
                 "sysfs.ddrboost": "1",
@@ -588,9 +588,9 @@
         "fast": {
             "*": {
                 "cpu.latencyTime": 0,
-                "cpu.slowLimitPower": 999,
-                "cpu.fastLimitPower": 999,
-                "cpu.fastLimitCapacity": 999,
+                "cpu.slowLimitPower": 2.5,
+                "cpu.fastLimitPower": 5.0,
+                "cpu.fastLimitCapacity": 16.0,
                 "cpu.fastLimitRecoverScale": 999,
                 "cpu.margin": 1,
                 "sysfs.ddrboost": "1",

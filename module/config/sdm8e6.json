@@ -540,7 +540,10 @@
                 "cpu.margin": 0.4,
                 "sysfs.LLCCmax": 999999999,
                 "sysfs.L3max": 999999999,
-                "sysfs.DDRmax": 999999999
+                "sysfs.DDRmax": 999999999,
+                "cpu.slowLimitPower": 7.5,
+                "cpu.fastLimitPower": 13.0,
+                "cpu.fastLimitCapacity": 48.0
             },
             "idle": {
                 "sched.scene": "idle"
@@ -571,7 +574,10 @@
                 "cpu.margin": 0.4,
                 "sysfs.LLCCmax": 999999999,
                 "sysfs.L3max": 999999999,
-                "sysfs.DDRmax": 999999999
+                "sysfs.DDRmax": 999999999,
+                "cpu.slowLimitPower": 7.5,
+                "cpu.fastLimitPower": 13.0,
+                "cpu.fastLimitCapacity": 48.0
             },
             "idle": {
                 "sched.scene": "idle"

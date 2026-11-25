@@ -101,15 +101,19 @@ else
     done
 
     MIN_PWRLVL=$(($(cat /sys/class/kgsl/kgsl-3d0/num_pwrlevels) - 1))
-    mask_val "$MIN_PWRLVL" /sys/class/kgsl/kgsl-3d0/default_pwrlevel
-    mask_val "$MIN_PWRLVL" /sys/class/kgsl/kgsl-3d0/min_pwrlevel
-    mask_val "0" /sys/class/kgsl/kgsl-3d0/thermal_pwrlevel
-    mask_val "0" /sys/class/kgsl/kgsl-3d0/bus_split
-    mask_val "0" /sys/class/kgsl/kgsl-3d0/force_bus_on
-    mask_val "0" /sys/class/kgsl/kgsl-3d0/force_clk_on
-    mask_val "0" /sys/class/kgsl/kgsl-3d0/force_no_nap
-    mask_val "0" /sys/class/kgsl/kgsl-3d0/force_rail_on
-    mask_val "0" /sys/class/kgsl/kgsl-3d0/throttling
+    # 不要把 min/default 钉在最低档：那样 GPU 可以长期停在最低频，游戏一加载就掉帧。
+    # 留出 2 档下限，默认档跟随下限，保留完整高频档给 gpu_profile.sh 按模式抬升。
+    FLOOR_PWRLVL=$((MIN_PWRLVL - 2))
+    [ "$FLOOR_PWRLVL" -lt 0 ] && FLOOR_PWRLVL=0
+    lock_val "$FLOOR_PWRLVL" /sys/class/kgsl/kgsl-3d0/default_pwrlevel
+    lock_val "$FLOOR_PWRLVL" /sys/class/kgsl/kgsl-3d0/min_pwrlevel
+    lock_val "0" /sys/class/kgsl/kgsl-3d0/thermal_pwrlevel
+    lock_val "0" /sys/class/kgsl/kgsl-3d0/bus_split
+    lock_val "0" /sys/class/kgsl/kgsl-3d0/force_bus_on
+    lock_val "0" /sys/class/kgsl/kgsl-3d0/force_clk_on
+    lock_val "0" /sys/class/kgsl/kgsl-3d0/force_no_nap
+    lock_val "0" /sys/class/kgsl/kgsl-3d0/force_rail_on
+    lock_val "1" /sys/class/kgsl/kgsl-3d0/throttling
     mask_val "0" /proc/sys/walt/sched_boost
     mask_val "0" /sys/module/metis/parameters/cluaff_control
     mask_val "0" /sys/module/metis/parameters/mi_fboost_enable

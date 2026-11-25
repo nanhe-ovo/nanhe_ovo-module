@@ -577,9 +577,9 @@
                 "cpu.latencyTime": 0.0,
                 "sysfs.cpuonlinemax": 2,
                 "sysfs.cpuonlinemin": 2,
-                "cpu.slowLimitPower": 999.0,
-                "cpu.fastLimitPower": 999.0,
-                "cpu.fastLimitCapacity": 999.0,
+                "cpu.slowLimitPower": 4.5,
+                "cpu.fastLimitPower": 9.0,
+                "cpu.fastLimitCapacity": 36.0,
                 "cpu.margin": 0.2,
                 "cpu.burst": 0.2
             },
@@ -615,10 +615,11 @@
                 "cpu.latencyTime": 0.0,
                 "sysfs.cpuonlinemax": 2,
                 "sysfs.cpuonlinemin": 2,
-                "cpu.slowLimitPower": 999.0,
-                "cpu.fastLimitPower": 999.0,
-                "cpu.fastLimitCapacity": 999.0,
-                "cpu.burst": 1.0
+                "cpu.slowLimitPower": 4.5,
+                "cpu.fastLimitPower": 9.0,
+                "cpu.fastLimitCapacity": 36.0,
+                "cpu.burst": 1.0,
+                "cpu.margin": 0.4
             },
             "idle": {
                 "sched.scene": "idle"

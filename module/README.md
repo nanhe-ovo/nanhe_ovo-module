@@ -3,14 +3,16 @@
 基于 [Uperf-Game-Turbo](https://github.com/yinwanxi/Uperf-Game-Turbo) 的性能调度模块（Magisk / KernelSU / APatch 通用可刷入 zip），内置一套 Miuix 观感的本地 WebUI（绿色「工作中」状态卡、纯白大圆角卡、底部悬浮液态玻璃胶囊导航）：切换全局性能模式、为单个游戏绑定调度策略、直接控制 CPU / GPU 频率区间、调节屏幕刷新率、线程调度（AppOptR 引擎，跟随模式自动切换档位，按本机拓扑展开规则，游戏页可单游戏绑定线程预设），关于页展示机型与系统信息，并带一份自动记录的运行日志。
 
 - 模块 ID：`nanhe_ovo`
-- 版本：`v1.8.0`（versionCode `202611192`）
+- 版本：`v1.10.0`（versionCode `202611256`）
 - 引擎：uperf（来自 Uperf-Game-Turbo，Apache-2.0）+ AppOptR（线程调度，GPL-3.0）
 - WebUI：纯本地 HTML/CSS/JS，无远程资源，不联网
+
+v1.10.0 起增加前台感知动态调度：`game_watch.sh` 检测前台包名与亮灭屏，游戏按 `perapp_powermode.txt` 拉起 `fast`，非游戏回 `balance`，灭屏切 `powersave`；切换时同步重生成 AppOptR 线程档位、GPU 窗口与 DDR 上限。新增 `thermal_guard.sh` 按 70–90°C 分档平滑限频，`ddr_profile.sh` 把 DDR 上限压到硬件峰值的 45–90%，不再长期钉 100%。
 
 ## 安装
 
 1. 确认设备为 **arm64**（模块内置的 uperf 与 busybox 只有 aarch64 版本）。
-2. 在管理器里刷入 `nanhe_ovo-v1.8.0-20261119.zip`：Magisk → 模块 → 从本地安装；KernelSU / APatch → 模块 → 安装。
+2. 在管理器里刷入 `nanhe_ovo-v1.10.0-20261125.zip`：Magisk → 模块 → 从本地安装；KernelSU / APatch → 模块 → 安装。
 3. 重启。
 4. 打开面板：KernelSU / APatch 管理器 → 模块 → 南何ovo → 打开 WebUI。
    Magisk 本体没有模块 WebUI，可用 KsuWebUIStandalone 等工具打开 `/data/adb/modules/nanhe_ovo/webroot/index.html`。
@@ -137,15 +139,15 @@ sh /data/adb/modules/nanhe_ovo/script/control.sh deviceinfo
 2. **不提供频率持久化**。重启后回到各模式自己的调度结果，`restore` 也只针对「本次开机」记录的原始边界。
 3. **GPU 节点因机型而异**。只有同时可读可写、且在 `/sys/class/devfreq`、`/sys/class/kgsl` 下被发现、名字包含 gpu/mali/kgsl 的节点才会出现；部分机型 GPU 频率由内核驱动锁定，面板会显示「没有可用频率表，禁止写入」。
 4. **模板兜底不是精确适配**。未匹配到平台配置时使用 `template.json`，频率档位可能与本机不完全一致，调度效果因机而异。
-5. **不做温控关闭**。本模块不实现「关闭温控」之类的取舍；关闭系统调优时也不会去停厂商进程。
+5. **温控由平滑闸门接管，不是一刀切全关**。v1.10.0 起 `thermal_guard.sh` 在 70–90°C 分档压 CPU 上限，3°C 回差、每次最多降一档，硬件 LMH 仍保留；关闭系统调优时也不会停厂商进程。这样比“先全关温控、热到硬件硬夹”更少出现突然掉帧。
 6. **需要 Root 且需要 callback 桥接**。Root 不可用或管理器没有 KernelSU 官方 callback 接口时，面板进入只读演示，不会伪造写入成功。
 7. **与其它 uperf 类模块冲突**。同时安装会互相改写频率与规则；安装脚本只提示，不会删除任何其它模块。
 8. **刷新率档位来自 `dumpsys` 文本解析**。`dumpsys display` / `dumpsys SurfaceFlinger` 的格式随厂商与系统版本变化；现在同时识别 `fps=`、`refreshRate=`、`vsyncPeriod=`、`NN Hz` 等写法，仍解析不到时不会再把整块控件禁用，而是放开全部 30–240Hz 让你尝试（`refresh_known=0` 会显示在状态里）。若某个档位写入后系统仍保持原值，说明该档确实不受支持；把 `dumpsys display | head -n 40` 的输出发回来可以补上对应写法。
 9. **刷新率与厂商标注值可能不同**。这里写的是系统允许的上下限，不是屏幕硬件标称值；部分机型还要看「显示刷新率」系统开关或开发者选项的覆盖，模块不会去改这些开关。
 10. **刷新率管理默认关闭**。新安装完全不碰系统刷新率；需要强制固定时在频率页打开「刷新率管理」并选择档位。v1.5.0 升级用户若已有 `refresh.txt`，会自动沿用并视为开启。
 11. **刷新率的持久化依赖开机脚本**。面板写入是即时生效，重启后由 `service.sh` 里的 `refresh_apply.sh` 重写；若管理器禁止模块开机自启或你手动禁用了模块服务，重启后就会回到系统自己的策略。
-12. **GPU 分模式窗口只抬下限**。脚本不改 `max_freq`、不升压、不突破出厂 OPP 表；厂商内核覆盖 `min_freq` 或节点名不同都可能让效果有限，回读不符只记日志。骁龙低分组配置属推测派活，需真机按调度曲线校准。
-13. **线程规则是静态放置，不改频率与优先级**。AppOptR 只把线程放进对应 cpuset 分组，实际升频仍由系统 DVFS / uperf 决定；规则在生成前已展开为数字掩码，不会把空 cpuset 写进基础分组。
+12. **GPU 分模式窗口按平台分别处理**。MTK Mali 只抬真实 OPP 表内的下限、不压低上限；骁龙 kgsl 分支会按模式设置 devfreq 上下限与 pwrlevel 下限，并恢复 `throttling=1`，不再把 GPU 下限钉在最低档。厂商内核覆盖节点或节点名不同都可能让效果有限，回读不符只记日志。低分组配置属推测派活，需真机按调度曲线校准。
+13. **线程规则是静态放置，但档位会随前台切换**。AppOptR 只把线程放进对应 cpuset 分组，实际升频仍由系统 DVFS / uperf 决定；规则在生成前已展开为数字掩码，不会把空 cpuset 写进基础分组。`game_watch.sh` 在游戏进出前台时重生成 active.conf，避免“全局 fast 线程 + perapp performance 功率”错配。ACE 反作弊游戏（三角洲行动等）在 `thread_skip.list` 中整包跳过，不写 cpuset/线程亲和性。
 14. **线程引擎需要内核支持**。cpuset 分组、eBPF 或 /proc 线程枚举在个别厂商内核上可能受限；引擎起不来时线程调度会显示「未运行」，不会影响 uperf 主调度。
 
 ## 卸载

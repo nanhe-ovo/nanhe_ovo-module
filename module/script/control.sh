@@ -532,6 +532,8 @@ cmd_mode() {
     fi
     sh "$MODULE/script/gpu_profile.sh" "$1" >/dev/null 2>&1 ||
         log_write warn gpu 'GPU 分模式窗口应用失败，已保留当前节点值'
+    sh "$MODULE/script/ddr_profile.sh" "$1" >/dev/null 2>&1 ||
+        log_write warn ddr 'DDR 分模式上限应用失败，已保留当前节点值'
     # 线程档位同步：重生成 active.conf（保持 inode 覆盖，AppOptR 的 inotify 立即热载）
     if thread_gen_conf "$1"; then
         log_write info thread "线程规则已切换到 ${1} 档并热载"
@@ -1056,10 +1058,28 @@ cmd_threadrule() {
         ' "$THREAD_USER" > "$WORK/text.new" || return 1
     else : > "$WORK/text.new" || return 1
     fi
-    if [ "$2" != delete ]; then
+    # ACE 反作弊游戏：不写 AppOptR 线程规则。先判断再决定是否生成块，
+    # 避免旧 compat 分支把块写进 user.conf 后又被跳过逻辑留在文件里。
+    TR_SKIPPED=no
+    if [ "$2" != delete ] && [ -f "$THREAD_SKIP" ] && [ ! -L "$THREAD_SKIP" ]; then
+        TR_SKIPPED=$(awk -v p="$1" '
+            { sub(/#.*/, ""); gsub(/^[ \t]+|[ \t]+$/, "") }
+            $0 == p { hit = 1 }
+            END { print hit ? "yes" : "no" }
+        ' "$THREAD_SKIP" 2>/dev/null)
+    fi
+    if [ "$2" != delete ] && [ "$TR_SKIPPED" != yes ]; then
         threadrule_block "$1" "$2" >> "$WORK/text.new" || return 1
     fi
     commit_text "$THREAD_USER" "$WORK/text.new" || return 1
+    if [ "$TR_SKIPPED" = yes ]; then
+        TH_CUR=$(cat "$UPERF/cur_powermode.txt" 2>/dev/null)
+        valid_mode "$TH_CUR" || TH_CUR=balance
+        thread_gen_conf "$TH_CUR" || { err 'thread config regenerate failed'; return 1; }
+        printf '提示：%s 使用 ACE 反作弊，会校验线程亲和性；已跳过 AppOptR 的 cpuset/线程绑定，仅保留 Uperf 功率模式，避免启动闪退。\n' "$1" >&2
+        printf 'ok\tthreadrule\t%s\t%s\tskipped\n' "$1" "$2"
+        return 0
+    fi
     # 立即并入 active.conf（保持 inode 覆盖，inotify 热载）
     TH_CUR=$(cat "$UPERF/cur_powermode.txt" 2>/dev/null)
     valid_mode "$TH_CUR" || TH_CUR=balance

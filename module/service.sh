@@ -11,3 +11,7 @@ sh "$MODDIR/script/refresh_apply.sh"
 
 # 线程调度引擎：AppOptR（SutoLiu，GPL-3.0，https://gitee.com/sutoliu/AppOptR）
 sh "$MODDIR/script/thread_svc.sh"
+
+# 前台感知：游戏进前台 fast，退出 balance，灭屏 powersave；同时启动平滑温控闸门。
+sh "$MODDIR/script/game_watch.sh" start
+sh "$MODDIR/script/thermal_guard.sh" start

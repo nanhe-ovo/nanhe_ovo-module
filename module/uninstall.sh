@@ -3,6 +3,7 @@
 # 结构沿用 Uperf-Game-Turbo（Apache-2.0）。
 
 USER_PATH=/sdcard/Android/yc/uperf
+MODDIR=$(cd "$(dirname "$0")" 2>/dev/null && pwd)
 
 wait_until_login() {
     while [ "$(getprop sys.boot_completed 2>/dev/null)" != "1" ]; do
@@ -52,6 +53,10 @@ on_remove() {
             *) settings put system min_refresh_rate "$orig_min" >/dev/null 2>&1 ;;
         esac
     fi
+
+    # 停止前台动态调度与温控闸门，避免卸载后仍有子进程写节点
+    [ -f "$MODDIR/script/game_watch.sh" ] && sh "$MODDIR/script/game_watch.sh" stop 2>/dev/null
+    [ -f "$MODDIR/script/thermal_guard.sh" ] && sh "$MODDIR/script/thermal_guard.sh" stop 2>/dev/null
 
     # 停止线程引擎（AppOptR，GPL-3.0）并清理 cpuset 分组与运行时数据
     APPOpt_PID=$(pidof AppOpt 2>/dev/null)

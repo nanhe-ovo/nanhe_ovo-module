@@ -52,11 +52,11 @@
   ].join('\n');
   const DEMO_RULES = '* balance\n- powersave\ncom.example.game performance';
   // 演示用的线程规则：结构与后端 threadrules 输出一致（块头注释 + 规则块）。
-  const DEMO_THREAD = '# nanhe_threadrule pkg=com.example.game preset=game\ncom.example.game=p-core {\n\tUnityMain=hp-core\n\tRenderThread*=p-core\n\tFAsyncLoading=e-core,p-core\n\tAudioTrack=e-core\n}\n';
+  const DEMO_THREAD = '# nanhe_threadrule pkg=com.example.game preset=game\ncom.example.game=p-core {\n\tUnityMain=hp2-core\n\tRenderThread*=p-core\n\tFAsyncLoading=e-core,p-core\n\tAudioTrack=e-core\n}\n';
   // 线程预设展示文案；delete 为「不绑定」。
   const THREAD_PRESETS = {
     ui: ['界面', '渲染上大核，其余小中核'],
-    game: ['游戏', '主线程大核，渲染中核，IO 隔离'],
+    game: ['游戏', '主线程双大核，渲染跨大核，IO 隔离'],
     bg: ['后台', '整包压小核省电'],
     full: ['全核', '放开全部核心'],
     delete: ['不绑定', '删除该应用的线程规则'],
@@ -492,7 +492,7 @@
         if (tselect.value === 'delete') {
           mutate('解除线程绑定？', pkg + '\n删除该应用的线程规则，恢复为跟随全局档位。', 'threadrule', [pkg, 'delete']);
         } else {
-          mutate('绑定线程预设？', pkg + '\n线程预设「' + meta[0] + '」：' + meta[1] + '。\n预设由 AppOptR 引擎按本机拓扑实时解析（语义核 e/p/hp-core），保存后立即生效。', 'threadrule', [pkg, tselect.value]);
+          mutate('绑定线程预设？', pkg + '\n线程预设「' + meta[0] + '」：' + meta[1] + '。\n预设由 AppOptR 引擎按本机拓扑实时解析（语义核 e/p/hp/hp2-core），保存后立即生效。\n三角洲行动等 ACE 反作弊游戏会自动跳过 cpuset/线程绑定，并在页面提示原因，避免启动闪退。', 'threadrule', [pkg, tselect.value]);
         }
       });
       tcontrols.append(tselect, tsave);

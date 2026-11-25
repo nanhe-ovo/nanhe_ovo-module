@@ -541,7 +541,10 @@
     "performance": {
       "*": {
         "cpu.latencyTime": 0.0,
-        "cpu.margin": 0.4
+        "cpu.margin": 0.4,
+        "cpu.slowLimitPower": 6.0,
+        "cpu.fastLimitPower": 11.0,
+        "cpu.fastLimitCapacity": 48.0
       },
       "idle": {
         "sched.scene": "idle"
@@ -569,7 +572,10 @@
     "fast": {
       "*": {
         "cpu.latencyTime": 0.0,
-        "cpu.margin": 0.4
+        "cpu.margin": 0.4,
+        "cpu.slowLimitPower": 6.0,
+        "cpu.fastLimitPower": 11.0,
+        "cpu.fastLimitCapacity": 48.0
       },
       "idle": {
         "sched.scene": "idle"

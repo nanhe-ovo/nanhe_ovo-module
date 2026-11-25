@@ -2,10 +2,14 @@
 
 Magisk / KernelSU / APatch 通用的 Android 性能调度模块。v1.11.0 起不再内置或启动 uperf 二进制：CPU 配置继续保存在 JSON 中，构建期生成 `cpu_profiles.tsv`，运行期由自研 `cpu_policy.sh` 直接写标准 cpufreq 节点；线程调度仍由 AppOptR 负责。
 
-- 版本：`v1.11.0`（versionCode `202611257`）
+- 版本：`v1.11.1`（versionCode `202611258`）
 - 模块 id：`nanhe_ovo`
-- 刷入包：`nanhe_ovo-v1.11.0-20261125.zip`（见 Release 页）
+- 刷入包：`nanhe_ovo-v1.11.1-20261125.zip`（见 Release 页）
 - 要求：**arm64** 设备；需要支持模块 WebUI 的管理器与 Root
+
+## v1.11.1 UI 修复
+
+v1.11.0 的 WebUI 在部分 WebView 里整页无样式，原因是深色主题变量块少了一个闭合 `}`，后续 CSS 被当成同一段声明吞掉。v1.11.1 补上该括号，恢复 Miuix 卡片、状态卡与悬浮实色底栏；同时把 CSS 花括号检查加入回归测试。调度逻辑与 CPU 策略未改动。
 
 ## 这一版做了什么
 
@@ -16,11 +20,11 @@ Magisk / KernelSU / APatch 通用的 Android 性能调度模块。v1.11.0 起不
 - **温控基线重置**：模式切换时丢弃上一模式的旧上限，避免 `fast` 被 `balance` 的旧基线夹住。
 - **WebUI**：底栏改为离底边 16px 的实色 Miuix 悬浮胶囊，当前页浅蓝高亮；移除液态玻璃、背景模糊、折射/色散/镜片滑动。页面纯本地，不联网。
 
-完整说明见 [`module/README.md`](module/README.md)，版本记录见 [`docs/CHANGELOG.md`](docs/CHANGELOG.md)，短公告见 [`docs/更新公告-v1.11.0.md`](docs/更新公告-v1.11.0.md)。
+完整说明见 [`module/README.md`](module/README.md)，版本记录见 [`docs/CHANGELOG.md`](docs/CHANGELOG.md)，短公告见 [`docs/更新公告-v1.11.1.md`](docs/更新公告-v1.11.1.md)。
 
 ## 安装
 
-1. 在管理器里刷入 `dist/nanhe_ovo-v1.11.0-20261125.zip`。
+1. 在管理器里刷入 `dist/nanhe_ovo-v1.11.1-20261125.zip`。
 2. 重启。
 3. KernelSU / APatch → 模块 → 南何ovo → 打开 WebUI；Magisk 可用 KsuWebUIStandalone 打开 `/data/adb/modules/nanhe_ovo/webroot/index.html`。
 

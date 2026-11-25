@@ -38,6 +38,19 @@ while IFS= read -r f; do
 done < <(find "$MODULE" -name '*.sh' -o -name 'customize.sh' -o -name 'service.sh' -o -name 'post-fs-data.sh' -o -name 'uninstall.sh' | sort)
 [ "$SYNTAX_FAIL" = 0 ] && ok "全部 shell 脚本语法通过"
 
+# CSS 是 WebUI 的单点故障源：变量块少一个 } 就会让后续规则整体失效。
+CSS_BAL=$(python3 - "$MODULE/webroot/style.css" <<'PY'
+import re, sys
+s = open(sys.argv[1], encoding='utf-8').read()
+s = re.sub(r'/\*.*?\*/', '', s, flags=re.S)
+s = re.sub(r'"(?:[^"\\]|\\.)*"', '""', s)
+s = re.sub(r"'(?:[^'\\]|\\.)*'", "''", s)
+left, right = s.count('{'), s.count('}')
+print('balanced' if left == right else f'{left}/{right}')
+PY
+)
+if [ "$CSS_BAL" = balanced ]; then ok "WebUI style.css 花括号闭合"; else bad "WebUI style.css 花括号不平衡（$CSS_BAL）"; fi
+
 for f in customize.sh service.sh post-fs-data.sh uninstall.sh bin/busybox/busybox script/control.sh script/initsvc.sh script/cpu_policy.sh; do
     [ -x "$MODULE/$f" ] || bad "缺少可执行位：$f"
 done

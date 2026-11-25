@@ -3,11 +3,13 @@
 Magisk / KernelSU / APatch 通用的性能调度模块：**自研表驱动 CPU 策略 + AppOptR 线程调度 + Miuix 观感 WebUI**。v1.11.0 起不再内置或启动 uperf 二进制，CPU 配置继续保留在 JSON 中，构建时生成每簇频率上限表，运行期由 `cpu_policy.sh` 直接写标准 cpufreq 节点。
 
 - 模块 ID：`nanhe_ovo`
-- 版本：`v1.11.0`（versionCode `202611257`）
+- 版本：`v1.11.1`（versionCode `202611258`）
 - CPU 策略：`script/cpu_policy.sh` + `cpu_profiles.tsv`
 - 线程引擎：AppOptR（GPL-3.0，SutoLiu）
 - 配置数据：Uperf-Game-Turbo 功耗模型（Apache-2.0，仅作 JSON 数据源）
 - WebUI：纯本地 HTML/CSS/JS，无远程资源，不联网
+
+> v1.11.1 修复了 v1.11.0 WebUI 的 CSS 花括号缺失；面板恢复 Miuix 卡片与悬浮实色底栏，调度逻辑不变。
 
 ## 工作方式
 
@@ -22,7 +24,7 @@ Magisk / KernelSU / APatch 通用的性能调度模块：**自研表驱动 CPU �
 ## 安装
 
 1. 设备需要 **arm64**（模块内 busybox 与 AppOptR 为 aarch64）。
-2. 管理器刷入 `nanhe_ovo-v1.11.0-20261125.zip`。
+2. 管理器刷入 `nanhe_ovo-v1.11.1-20261125.zip`。
 3. 重启后打开 WebUI：KernelSU / APatch → 模块 → 南何ovo → 打开 WebUI；Magisk 可用 KsuWebUIStandalone 打开 `/data/adb/modules/nanhe_ovo/webroot/index.html`。
 4. 升级用户会备份旧 `uperf.json`，并迁移旧版分应用规则：新模板为 48 款游戏 `fast`、`- powersave`、`* balance`，旧模板的 `* performance` 会被替换，自定义包名保留。
 

@@ -2,5 +2,6 @@
   "version": "v1.12.0",
   "versionCode": 202611259,
   "zipUrl": "https://github.com/nanhe-ovo/nanhe_ovo-module/releases/download/v1.12.0/nanhe_ovo-v1.12.0-20261125.zip",
-  "changelog": "https://raw.githubusercontent.com/nanhe-ovo/nanhe_ovo-module/main/docs/CHANGELOG.md"
+  "changelog": "https://raw.githubusercontent.com/nanhe-ovo/nanhe_ovo-module/main/docs/CHANGELOG.md",
+  "srcZipUrl": "https://github.com/nanhe-ovo/nanhe_ovo-module/releases/download/v1.12.0/nanhe_ovo-src-v1.12.0-20261125.zip"
 }
